@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 internal data class AppCommand(val id: String, val title: String, val enabled: Boolean, val hint: String = "", val action: () -> Unit)
 /** Temporarily shelved product entry points; implementations remain available internally. */
 internal object FeatureVisibility {
-    private val hidden = setOf("ai", "replay", "forge", "reflog", "recovery")
+    private val hidden = setOf("ai", "replay", "forge", "reflog")
     fun visible(id: String): Boolean = id !in hidden
 }
 internal class CommandRegistry(commands: List<AppCommand>) {
@@ -45,7 +45,6 @@ internal fun shortcutCommand(key: Key, primary: Boolean, shift: Boolean, editing
         key == Key.F && !shift -> "search"
         key == Key.R && !shift -> "refresh"
         key == Key.Enter && !shift -> "commit"
-        key == Key.Z && !shift && !editing -> "undo"
         else -> null
     }
 }

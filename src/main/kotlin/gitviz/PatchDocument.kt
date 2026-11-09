@@ -147,7 +147,7 @@ internal fun GitCli.patchDocument(file: WorkingFile, staged: Boolean): PatchDocu
 }
 
 internal fun GitCli.applySelection(document: PatchDocument, selected: Set<Int>, beforeInstall: () -> Unit = {}): GitResult =
-    coordinator.execute(OperationRequest(OperationKind.INDEX, listOf(if (document.staged) "partial-unstage" else "partial-stage", document.file.path), paths = setOf(document.file.path))) {
+    coordinator.execute(OperationRequest(OperationKind.INDEX, listOf(if (document.staged) "partial-unstage" else "partial-stage", document.file.path))) {
         check(document.signature == patchDocument(document.file, document.staged).signature) { t("Diff changed. Reload and select again.", "Diff 已改变，请重新加载并选择。") }
         val patch = document.patch(selected)
         if (patch.isEmpty()) return@execute GitResult(null, "")
@@ -160,12 +160,15 @@ internal fun GitCli.applySelection(document: PatchDocument, selected: Set<Int>, 
             raw(listOf("apply", "--cached", "--check", "--whitespace=nowarn", "-"), patch, environment, teach = true).requireSuccess()
             raw(listOf("apply", "--cached", "--whitespace=nowarn", "-"), patch, environment, teach = true).requireSuccess()
             beforeInstall()
-            RecoveryIndexLock(ownDirectory, checkNotNull(coordinator.recordId)).use { owned ->
+            // Take index.lock like Git does; an existing lock belongs to another process and fails here.
+            val lock = ownDirectory.resolve("index.lock").toPath()
+            Files.createFile(lock)
+            try {
                 check(document.indexStamp == indexStamp()) { t("Index changed concurrently. Reload and select again.", "暂存区被其他进程修改，请重新选择。") }
                 check(document.signature == patchDocument(document.file, document.staged).signature) { "Patch inputs changed before installation" }
-                java.io.FileOutputStream(owned.lock.toFile()).use { out -> temp.inputStream().use { it.copyTo(out) }; out.fd.sync() }
-                owned.commit()
-            }
+                java.io.FileOutputStream(lock.toFile()).use { out -> temp.inputStream().use { it.copyTo(out) }; out.fd.sync() }
+                Files.move(lock, index.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } finally { Files.deleteIfExists(lock) }
             GitResult(null, t("Selected changes updated in index; working files unchanged", "已更新选中改动的暂存状态，工作区文件保持不变"))
         } finally { temp.delete(); temp.resolveSibling(temp.name + ".lock").delete() }
     }

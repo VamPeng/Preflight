@@ -3,7 +3,7 @@ package gitviz
 import kotlin.test.*
 
 class SubtreesTest {
-    @Test fun `add and update fixed remote snapshot then restore whole operation`() = RepositoryFixture().use { r ->
+    @Test fun `add and update fixed remote snapshot`() = RepositoryFixture().use { r ->
         RepositoryFixture().use { remote ->
             val original = r.commit(); remote.commit("library", "v1\n")
             r.git("config", "protocol.file.allow", "always")
@@ -15,13 +15,7 @@ class SubtreesTest {
             remote.commit("library", "v2\n")
             val updated = r.cli.applySubtree(request(false)); assertTrue(updated.ok, updated.output)
             assertEquals("v2\n", r.root.resolve("vendor/space name/library").readText())
-            val updateRecord = r.cli.recovery.records().first { it.before.refs["refs/heads/main"] == afterAdd }
-            val preview = r.cli.recovery.preview(updateRecord.id)
-            assertTrue(r.cli.restorePoint(updateRecord.id, preview.fingerprint).ok)
-            assertEquals(afterAdd, r.git("rev-parse", "HEAD")); assertEquals("v1\n", r.root.resolve("vendor/space name/library").readText())
-            val addRecord = r.cli.recovery.records().first { it.before.refs["refs/heads/main"] == original && it.label.startsWith("subtree add") }
-            assertTrue(r.cli.restorePoint(addRecord.id, r.cli.recovery.preview(addRecord.id).fingerprint).ok)
-            assertEquals(original, r.git("rev-parse", "HEAD")); assertFalse(r.root.resolve("vendor/space name").exists())
+            assertEquals(afterAdd, r.git("rev-parse", "HEAD^1")); assertNotEquals(original, afterAdd)
         }
     }
 

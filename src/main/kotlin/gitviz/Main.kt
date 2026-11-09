@@ -132,7 +132,7 @@ private const val MIN_RELOAD_GAP_MS = 1500L
 /** 监听期间没有变化时，多久兜底读一次。 */
 private const val FALLBACK_RELOAD_MS = 30_000L
 
-private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, RECOVERY, INSIGHTS, REPLAY, TOOLS, FORGE, AI }
+private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, INSIGHTS, REPLAY, TOOLS, FORGE, AI }
 
 /** 打开的仓库和已加载的那部分历史。不可变，每加载一页换一个新对象。 */
 internal class RepoState(
@@ -651,7 +651,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         AppCommand("commit", t("Commit staged changes", "提交暂存改动"), available && !inConflict && commitDraft.message.isNotBlank() && (commitDraft.amend || working.any { it.hasStaged }), "⌘/Ctrl Enter") {
             runOp(NetStatus(t("Committing", "正在提交"), "", NetState.RUNNING), { describeAction(t("Committing", "正在提交"), t("Committed", "已提交"), it) }, onCompleted = { if (it) { commitDraft.message = ""; commitDraft.amend = false } }) { commit(commitDraft.message.trim(), commitDraft.amend) }
         },
-        AppCommand("undo", t("Undo latest local operation", "撤销最近本地操作"), available && !inConflict, "⌘/Ctrl Z") { actions.run(t("Undoing", "正在撤销"), t("Undone", "已撤销")) { undo() } },
         AppCommand("fetch", t("Fetch", "获取"), available && !inConflict) { runNet(NetOp.FETCH) },
         AppCommand("pull", t("Pull…", "拉取…"), available && !inConflict) { runNet(NetOp.PULL) },
         AppCommand("push", t("Push", "推送"), available && !inConflict) { runNet(NetOp.PUSH) },
@@ -680,7 +679,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     if (FeatureVisibility.visible("ai")) WorkspaceItem(t("AI assistance", "AI 辅助"), Icons.Edit, view == MainView.AI, 0) { view = MainView.AI }
                     if (FeatureVisibility.visible("forge")) WorkspaceItem(t("Hosting platform", "托管平台"), Icons.Branch, view == MainView.FORGE, 0) { view = MainView.FORGE }
                     if (FeatureVisibility.visible("reflog")) WorkspaceItem("Reflog", Icons.History, view == MainView.REFLOG, 0) { view = MainView.REFLOG }
-                    if (cli != null && FeatureVisibility.visible("recovery")) WorkspaceItem(t("Recovery", "恢复记录"), Icons.History, view == MainView.RECOVERY, 0) { view = MainView.RECOVERY }
                     if (workTree != null) {
                         WorkspaceItem(t("Files", "文件"), Icons.Folder, view == MainView.FILES, 0) { view = MainView.FILES }
                     }
@@ -761,7 +759,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             }
             HorizontalDivider()
             net?.let {
-                NetBanner(it, onAction = ::runNet, onDismiss = { if (net === it) net = null }, onUndo = if (cli != null && !operationBusy && !loading && it.state == NetState.DONE && it.recoveryId != null) ({ actions.run(t("Undoing", "正在撤销"), t("Undone", "已撤销")) { undo(it.recoveryId) } }) else null, onRecovery = if (cli != null && !operationBusy && !loading) ({ view = MainView.RECOVERY }) else null)
+                NetBanner(it, onAction = ::runNet, onDismiss = { if (net === it) net = null })
                 HorizontalDivider()
             }
             if (s == null) {
@@ -769,8 +767,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             } else {
                 if (view == MainView.REFLOG) {
                     ReflogView(s.repo, actions, { id -> view = MainView.HISTORY; jumpTo(id, direct = true) }, Modifier.fillMaxWidth().weight(1f), operationBusy || loading || cli == null)
-                } else if (view == MainView.RECOVERY && cli != null) {
-                    RecoveryView(cli, actions, workingReloads, operationBusy || loading, Modifier.fillMaxWidth().weight(1f))
                 } else if (view == MainView.INSIGHTS) {
                     InsightsView(s.repo.workTree ?: s.repo.repository.directory, Modifier.fillMaxWidth().weight(1f))
                 } else if (view == MainView.REPLAY) {

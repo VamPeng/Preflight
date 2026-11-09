@@ -20,7 +20,7 @@ class KeyboardFocusTest {
         GitRepo.open(r.root).use { repo ->
             val loaded = repo.loadCommits(); val state = RepoState.create(repo, loaded, loaded.commits.first().id)
             var selected by mutableStateOf<CommitInfo?>(loaded.commits.first())
-            var query by mutableStateOf(""); var open by mutableStateOf(false); var undoCalls = 0
+            var query by mutableStateOf(""); var open by mutableStateOf(false)
             val scene = ImageComposeScene(900, 600) {
                 GitVizTheme {
                     val root = remember { FocusRequester() }; val search = remember { FocusRequester() }; val history = remember { FocusRequester() }
@@ -28,7 +28,6 @@ class KeyboardFocusTest {
                     val registry = CommandRegistry(listOf(
                         AppCommand("palette", "Commands", true) { open = true },
                         AppCommand("search", "Search history", true) { scope.launch { withFrameNanos { }; search.requestFocus() } },
-                        AppCommand("undo", "Undo", true) { undoCalls++ },
                     ))
                     CompositionLocalProvider(LocalTextFocus provides text) {
                         Column(Modifier.fillMaxSize().focusRequester(root).onPreviewKeyEvent { e ->
@@ -54,10 +53,8 @@ class KeyboardFocusTest {
                 key(Key.Enter); assertFalse(open)
                 scene.sendKeyEvent(KeyEvent(Key.J, KeyEventType.Unknown, codePoint = 'j'.code, nativeEvent = java.awt.event.KeyEvent(java.awt.Canvas(), java.awt.event.KeyEvent.KEY_TYPED, 0, 0, java.awt.event.KeyEvent.VK_UNDEFINED, 'j'))); draw()
                 assertEquals("j", query)
-                key(Key.Z, primary = true); assertEquals(0, undoCalls)
                 key(Key.Escape); assertEquals("", query)
                 key(Key.J); assertEquals(loaded.commits[2].id, selected!!.id)
-                key(Key.Z, primary = true); assertEquals(1, undoCalls)
             } finally { scene.close() }
         }
     }

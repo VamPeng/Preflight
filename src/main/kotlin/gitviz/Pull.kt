@@ -42,7 +42,7 @@ internal fun GitCli.preparePull(settings: PullSettings): PreparedPull {
         if (!fetched.ok) return@execute fetched
         check(sourceHead == headIdentity()) { "Fetch completed, but current branch changed; integration was not started" }
         val oid = read("rev-parse", "--verify", "--end-of-options", "$tracking^{commit}").trim()
-        // Configuration is part of this recorded fetch step, restored by keys during local recovery.
+        // Remember the chosen strategy and upstream as part of the fetch step.
         raw(listOf("config", "--local", "gitviz.pullstrategy", settings.strategy.name), teach = true).requireSuccess()
         if (settings.setUpstream) {
             if (settings.remote != "." && mapped == null) raw(listOf("config", "--local", "--add", "remote.${settings.remote}.fetch", "+$source:$tracking"), teach = true).requireSuccess()

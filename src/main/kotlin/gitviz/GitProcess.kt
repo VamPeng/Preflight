@@ -20,7 +20,7 @@ internal object GitProcess {
     fun execute(directory: File, args: List<String>, input: ByteArray? = null, environment: Map<String, String> = emptyMap(),
                 timeoutSeconds: Long = 120, isolated: Boolean = false, preparedCheck: (() -> Unit)? = null): GitExecution {
         // Git diff may refresh stat entries even with GIT_OPTIONAL_LOCKS=0 (Apple Git 2.50).
-        // Inspection must not silently change the index bytes recorded by recovery.
+        // Inspection must not silently change the index bytes (partial staging and previews compare them).
         val process = ProcessBuilder(listOf("git", "-c", "diff.autoRefreshIndex=false") + args).directory(directory).apply {
             // Never let the launching shell redirect a command to another repository/index.
             environment().keys.removeAll(setOf("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"))
@@ -31,7 +31,7 @@ internal object GitProcess {
                 environment()["GIT_CONFIG_GLOBAL"] = "/dev/null"
                 environment()["GIT_NO_LAZY_FETCH"] = "1"
             }
-            // Background inspection must not rewrite index stat data and expire a recovery point.
+            // Background inspection must not rewrite index stat data or take index.lock.
             environment()["GIT_OPTIONAL_LOCKS"] = "0"
             environment()["GIT_TERMINAL_PROMPT"] = "0"
             environment()["LC_ALL"] = "C"

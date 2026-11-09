@@ -1,11 +1,10 @@
 package gitviz
 
 import org.eclipse.jgit.lib.ObjectId
-import org.eclipse.jgit.revwalk.ObjectWalk
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
-import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 
 internal enum class PreviewKind { MERGE, REBASE, CHERRY_PICK, RESET }
@@ -18,7 +17,7 @@ internal data class OperationIntent(val kind: PreviewKind, val target: String, v
         PreviewKind.CHERRY_PICK -> listOf("cherry-pick") + (if (parentCount > 1) listOf("-m", mainline.toString()) else emptyList()) + target
         PreviewKind.RESET -> listOf("reset", mode.flag, target)
     }
-    fun request() = OperationRequest(OperationKind.valueOf(kind.name), (switchBranch?.let { listOf("switch", it, "then") }.orEmpty() + listOf(kind.name.lowercase(), target)), revisions = setOfNotNull(target, switchBranch), rebaseRange = if (kind == PreviewKind.REBASE) (switchBranch ?: "HEAD") to target else null)
+    fun request() = OperationRequest(OperationKind.valueOf(kind.name), switchBranch?.let { listOf("switch", it, "then") }.orEmpty() + listOf(kind.name.lowercase(), target))
 }
 internal data class PreviewFile(val path: String, val diff: String)
 internal data class OperationPlan(val intent: OperationIntent, val fingerprint: String, val parentCount: Int,
@@ -32,10 +31,52 @@ internal data class OperationPlan(val intent: OperationIntent, val fingerprint: 
 private val semanticConfig = setOf("core.autocrlf", "core.eol", "core.safecrlf", "core.filemode", "core.ignorecase", "core.symlinks",
     "merge.ff", "merge.renormalize", "merge.diffalgorithm", "merge.renames", "merge.renamelimit", "merge.directoryrenames", "merge.conflictstyle", "diff.renamelimit")
 
-internal fun GitCli.previewFingerprint(intent: OperationIntent, state: RecoverySnapshot? = null): String {
+/** Worktree paths a rehearsal copies: tracked and untracked, not ignored. Listed by Git, never by walking the tree. */
+private fun GitCli.worktreePaths(): Set<String> = (read("ls-files", "-z") + "\u0000" + read("ls-files", "--others", "--exclude-standard", "-z"))
+    .split('\u0000').filter { it.isNotEmpty() }.toSortedSet()
+
+/**
+ * Ignored files the operation may overwrite: paths changed between HEAD and the targets, plus every path a rebase
+ * replays (intermediate commits may add and later delete a path). Computed by Git diff, not by scanning the tree.
+ */
+private fun GitCli.ignoredTouchedPaths(intent: OperationIntent, listed: Set<String>): Set<String> {
+    fun names(vararg args: String) = raw(args.toList()).let { if (it.exitCode == 0) it.text.split('\u0000').filter { n -> n.isNotEmpty() } else emptyList() }
+    val tips = listOfNotNull(intent.target, intent.switchBranch)
+    val touched = tips.flatMap { names("diff", "--name-only", "--no-renames", "-z", "HEAD", it) }.toMutableSet()
+    if (intent.kind == PreviewKind.REBASE) touched += names("log", "--name-only", "--format=", "--no-renames", "-z", "${intent.target}..${intent.switchBranch ?: "HEAD"}")
+    if (intent.kind == PreviewKind.CHERRY_PICK) touched += names("log", "-1", "-m", "--name-only", "--format=", "--no-renames", "-z", intent.target)
+    return touched.filter { it !in listed && Files.exists(workTree.toPath().resolve(it), NOFOLLOW_LINKS) }.toSet()
+}
+
+/** Kind, size, mtime, permissions and link target. Enough to notice a change without reading file contents. */
+private fun fileStat(root: File, name: String): String {
+    val path = root.toPath().resolve(name)
+    val attrs = runCatching { Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS) }.getOrNull() ?: return "missing"
+    return when {
+        attrs.isSymbolicLink -> "link " + Files.readSymbolicLink(path)
+        attrs.isDirectory -> "directory"
+        attrs.isRegularFile -> "file ${attrs.size()} ${attrs.lastModifiedTime().toMillis()} ${Files.isExecutable(path)}"
+        else -> "other"
+    }
+}
+
+/**
+ * Cheap staleness check: HEAD, references, index bytes, status, plus stat data of dirty paths and the rules that affect
+ * a rehearsal. Clean tracked files are covered by the index; their contents are never hashed.
+ */
+internal fun GitCli.previewFingerprint(intent: OperationIntent): String {
     val hash = MessageDigest.getInstance("SHA-256")
     fun add(bytes: ByteArray) { hash.update(java.nio.ByteBuffer.allocate(8).putLong(bytes.size.toLong()).array()); hash.update(bytes) }
-    add(recovery.fingerprint(state ?: recovery.previewState(intent.request())).toByteArray())
+    add(ownDirectory.resolve("HEAD").readBytes())
+    add(bytes("for-each-ref", "--format=%(refname) %(objectname) %(symref)"))
+    add(indexStamp().toByteArray())
+    val status = bytes("--no-optional-locks", "status", "--porcelain=v2", "-z", "--untracked-files=all")
+    add(status)
+    status.decodeToString().split('\u0000').filter { it.isNotEmpty() }.forEach { entry ->
+        val name = when (entry[0]) { '1' -> entry.split(' ', limit = 9).getOrNull(8); '2' -> entry.split(' ', limit = 10).getOrNull(9); 'u' -> entry.split(' ', limit = 11).getOrNull(10); '?' -> entry.drop(2); else -> null }
+        if (name != null) add(fileStat(workTree, name).toByteArray())
+    }
+    ignoredTouchedPaths(intent, emptySet()).sorted().forEach { add(it.toByteArray()); add(fileStat(workTree, it).toByteArray()) }
     intent.interactive?.let { add(it.todo().toByteArray()); add(it.head.toByteArray()) }
     add(bytes("config", "--null", "--list"))
     add(bytes("worktree", "list", "--porcelain"))
@@ -61,10 +102,10 @@ internal fun GitCli.planOperation(requested: OperationIntent): OperationPlan {
         val occupied = read("worktree", "list", "--porcelain").split("\n\n").filter { !it.startsWith("worktree ${workTree.canonicalPath}\n") }
         check(occupied.none { "\nbranch refs/heads/$branch\n" in "$it\n" }) { "Branch is checked out in another worktree" }
     }
-    val snapshot = recovery.previewState(intent.request())
-    val fingerprint = previewFingerprint(intent, snapshot)
-    val beforeHead = if (snapshot.head.startsWith("ref: ")) checkNotNull(snapshot.refs[snapshot.head.removePrefix("ref: ")]) else snapshot.head
-    check(intent.expectedHead == null || intent.expectedHead == "${snapshot.head}|$beforeHead") { "Current branch changed after fetch" }
+    val fingerprint = previewFingerprint(intent)
+    val headText = ownDirectory.resolve("HEAD").readText().trim()
+    val beforeHead = raw(listOf("rev-parse", "--verify", "-q", "HEAD^{commit}")).let { if (it.exitCode == 0) it.text.trim() else "" }
+    check(intent.expectedHead == null || intent.expectedHead == "$headText|$beforeHead") { "Current branch changed after fetch" }
     require(beforeHead.matches(Regex("[0-9a-f]{40}"))) { "Preview requires an existing commit" }
     val root = Files.createTempDirectory("gitviz-preview-").toFile()
     try {
@@ -89,67 +130,63 @@ internal fun GitCli.planOperation(requested: OperationIntent): OperationPlan {
         if (omitted.isNotEmpty()) warnings += t("Settings not rehearsed: ", "演练未采用的设置：") + omitted.joinToString()
         if (listOf("pre-merge-commit", "pre-commit", "commit-msg", "post-commit", "pre-rebase", "post-rewrite", "post-checkout").any { commonDirectory.resolve("hooks/$it").canExecute() } || config("core.hookspath")?.let { it != "/dev/null" } == true)
             warnings += t("Repository hooks are not run in rehearsal.", "演练不会执行仓库 hooks。")
-        GitRepo.open(workTree).use { source -> GitRepo.open(root).use { destination ->
-            ObjectWalk(source.repository).use { walk -> destination.repository.newObjectInserter().use { insert ->
-                (snapshot.roots + target).forEach { walk.markStart(walk.parseAny(ObjectId.fromString(it))) }
-                fun copy(id: ObjectId) {
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                    val obj = source.repository.open(id)
-                    obj.openStream().use { insert.insert(obj.type, obj.size, it) }
-                }
-                while (true) copy(walk.next() ?: break)
-                while (true) copy(walk.nextObject() ?: break)
-                insert.flush()
-            } }
-        } }
-        snapshot.refs.filterValues { !it.startsWith("ref: ") }.forEach { (ref, oid) -> git("update-ref", ref, oid).requireSuccess() }
-        if (snapshot.head.startsWith("ref: ")) git("symbolic-ref", "HEAD", snapshot.head.removePrefix("ref: ")).requireSuccess()
-        else git("update-ref", "--no-deref", "HEAD", snapshot.head).requireSuccess()
-        snapshot.index.keys.forEach { ownDirectory.resolve(it).copyTo(root.resolve(".git/$it"), overwrite = true) }
-        snapshot.files.entries.sortedBy { it.key.count { c -> c == '/' } }.forEach { (name, saved) ->
+        // Borrow the source objects read-only instead of copying history. New rehearsal objects stay in the sandbox.
+        root.resolve(".git/objects/info").mkdirs()
+        root.resolve(".git/objects/info/alternates").writeText(commonDirectory.resolve("objects").absolutePath + "\n")
+        val refs = read("for-each-ref", "--format=%(objectname) %(refname) %(symref)").lineSequence().filter { it.isNotBlank() }
+            .map { it.split(' ', limit = 3) }.filter { it.getOrNull(2).isNullOrBlank() }.joinToString("") { "update ${it[1]} ${it[0]}\n" }
+        GitProcess.execute(root, listOf("update-ref", "--stdin"), refs.toByteArray(), isolated = true).requireSuccess()
+        if (headText.startsWith("ref: ")) git("symbolic-ref", "HEAD", headText.removePrefix("ref: ")).requireSuccess()
+        else git("update-ref", "--no-deref", "HEAD", headText).requireSuccess()
+        (listOf(ownDirectory.resolve("index")) + ownDirectory.listFiles().orEmpty().filter { it.name.startsWith("sharedindex.") })
+            .filter { it.isFile }.forEach { it.copyTo(root.resolve(".git/${it.name}"), overwrite = true) }
+        val sourcePaths = worktreePaths().let { listed -> listed + ignoredTouchedPaths(intent, listed) }
+        sourcePaths.forEach { name ->
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
+            val source = safeWorkingPath(name)
             val path = root.toPath().resolve(name)
-            when (saved.kind) {
-                "directory" -> Files.createDirectories(path)
-                "link" -> { Files.createDirectories(path.parent); Files.createSymbolicLink(path, java.nio.file.Path.of(saved.content)) }
-                "file" -> { Files.createDirectories(path.parent); Files.newByteChannel(safeWorkingPath(name), setOf(java.nio.file.StandardOpenOption.READ, NOFOLLOW_LINKS)).use { channel -> java.nio.channels.Channels.newInputStream(channel).use { input -> Files.newOutputStream(path).use { input.copyTo(it) } } } }
+            val attrs = runCatching { Files.readAttributes(source, BasicFileAttributes::class.java, NOFOLLOW_LINKS) }.getOrNull() ?: return@forEach
+            Files.createDirectories(path.parent)
+            when {
+                attrs.isSymbolicLink -> Files.createSymbolicLink(path, Files.readSymbolicLink(source))
+                attrs.isRegularFile -> Files.copy(source, path, NOFOLLOW_LINKS, java.nio.file.StandardCopyOption.COPY_ATTRIBUTES)
             }
-            if (saved.permissions.isNotEmpty() && saved.kind != "missing") Files.setPosixFilePermissions(path, saved.permissions.split(',').map { PosixFilePermission.valueOf(it) }.toSet())
         }
         val sandbox = GitCli(root, isolated = true)
-        val copied = sandbox.recovery.previewState(intent.request())
-        check(snapshot.files == copied.files && snapshot.index == copied.index && snapshot.head == copied.head) { "Source changed while copying rehearsal inputs" }
         val before = GitRepo.open(root).use { it.loadCommits(200).commits }
         val beforeIndex = git("write-tree").requireSuccess().decodeToString().trim()
-        val beforeState = sandbox.recovery.previewState(intent.request())
-        val contents = root.resolve(".git/gitviz-before").also { it.mkdir() }
-        beforeState.files.forEach { (path, saved) ->
-            if (saved.kind == "file" && root.resolve(path).length() <= 1024 * 1024) root.resolve(path).copyTo(contents.resolve(saved.content), overwrite = true)
-        }
+        val beforeIndexStamp = sandbox.indexStamp()
+        val beforeStat = sourcePaths.associateWith { fileStat(root, it) }
         val switched = intent.switchBranch?.let { git("switch", it) }
         val result = if (switched != null && switched.exitCode != 0) switched else intent.interactive?.let { sandbox.runInteractiveCommands(it) } ?: git(*intent.command(parentCount).toTypedArray())
         val paused = sandbox.currentOperation() != null
         val afterHead = git("rev-parse", "HEAD").requireSuccess().decodeToString().trim()
         val afterIndex = git("write-tree").let { if (it.exitCode == 0) it.text.trim() else null }
-        val afterState = sandbox.recovery.previewState(intent.request())
+        val afterPaths = sandbox.worktreePaths() + sourcePaths
+        val afterStat = afterPaths.associateWith { fileStat(root, it) }
         val after = GitRepo.open(root).use { it.loadCommits(200).commits }
         fun ids(vararg args: String) = git(*args).requireSuccess().decodeToString().lineSequence().filter { it.isNotBlank() }.toList()
         val added = ids("rev-list", afterHead, "^$beforeHead")
         val removed = ids("rev-list", beforeHead, "^$afterHead")
-        val workingImpact = (beforeState.files.keys + afterState.files.keys).filter { beforeState.files[it] != afterState.files[it] }
+        // A stat change alone may be a same-content rewrite; confirm against the untouched source file.
+        fun sameContent(path: String) = beforeStat[path]?.startsWith("file ") == true && afterStat[path]?.startsWith("file ") == true &&
+            Files.isExecutable(workTree.toPath().resolve(path)) == Files.isExecutable(root.toPath().resolve(path)) &&
+            Files.mismatch(safeWorkingPath(path), root.toPath().resolve(path)) == -1L
+        val workingImpact = afterPaths.filter { (beforeStat[it] ?: "missing") != afterStat[it] && !sameContent(it) }
         val files = GitRepo.open(root).use { repo -> repo.changesBetween(beforeHead, afterHead).map { PreviewFile("HEAD · ${it.displayPath}", repo.diffText(it)) } }.toMutableList()
         if (afterIndex != null && beforeIndex != afterIndex) GitRepo.open(root).use { repo ->
             files += repo.changesBetween(beforeIndex, afterIndex).map { PreviewFile(t("Index · ", "暂存区 · ") + it.displayPath, repo.diffText(it)) }
         }
         workingImpact.forEach { path ->
-            val old = beforeState.files[path]; val new = afterState.files[path]
-            fun content(saved: SavedPath?, before: Boolean): ByteArray? = when (saved?.kind) {
-                null, "missing" -> byteArrayOf()
-                "link" -> saved.content.toByteArray()
-                "file" -> (if (before) contents.resolve(saved.content) else root.resolve(path)).takeIf { it.isFile && it.length() <= 1024 * 1024 }?.readBytes()
+            val old = beforeStat[path] ?: "missing"; val new = afterStat.getValue(path)
+            fun content(stat: String, file: java.nio.file.Path): ByteArray? = when {
+                stat == "missing" -> byteArrayOf()
+                stat.startsWith("link ") -> stat.removePrefix("link ").toByteArray()
+                stat.startsWith("file ") -> file.takeIf { Files.size(it) <= 1024 * 1024 }?.let(Files::readAllBytes)
                 else -> null
             }
-            val detail = previewContentDiff(path, content(old, true), content(new, false)) + "\n${old?.kind ?: "missing"} → ${new?.kind ?: "missing"}"
+            val detail = previewContentDiff(path, content(old, workTree.toPath().resolve(path)), content(new, root.toPath().resolve(path))) +
+                "\n${old.substringBefore(' ')} → ${new.substringBefore(' ')}"
             files += PreviewFile(t("Working tree · ", "工作区 · ") + path, detail)
         }
         if (paused) sandbox.status().forEach { f -> files += PreviewFile(f.path, sandbox.diff(f, f.hasStaged && !f.hasUnstaged)) }
@@ -168,7 +205,7 @@ internal fun GitCli.planOperation(requested: OperationIntent): OperationPlan {
             GitRepo.open(root).use { repo -> expectedTopology(projected, virtual(afterHead), labels + ("onto" to intent.target), repo::commit) }
         }.getOrElse { warnings += t("Remaining topology could not be projected: ", "无法推导剩余拓扑：") + it.message; emptyList() }
         return OperationPlan(intent, fingerprint, parentCount, before, virtualAfter, beforeHead, virtual(afterHead), added, removed, files,
-            workingImpact, beforeState.index != afterState.index, afterState.head.removePrefix("ref: refs/heads/").takeIf { afterState.head.startsWith("ref: refs/heads/") },
+            workingImpact, beforeIndexStamp != sandbox.indexStamp(), root.resolve(".git/HEAD").readText().trim().let { head -> head.removePrefix("ref: refs/heads/").takeIf { head.startsWith("ref: refs/heads/") } },
             result.result(), warnings, paused, projected, workTree.canonicalPath, expected)
     } finally {
         // GitProcess waits for its children before returning, including interruption. Never delete beneath a live child.
@@ -176,16 +213,15 @@ internal fun GitCli.planOperation(requested: OperationIntent): OperationPlan {
     }
 }
 
-internal fun GitCli.executePlan(plan: OperationPlan): GitResult = coordinator.execute(OperationRequest(OperationKind.OTHER)) {
+internal fun GitCli.executePlan(plan: OperationPlan): GitResult = coordinator.execute(plan.intent.request()) {
     plan.intent.interactive?.let { checkInteractivePlan(it) }
     check(plan.repository == workTree.canonicalPath && plan.fingerprint == previewFingerprint(plan.intent)) { t("Preview expired. Preview the operation again.", "预览已过期，请重新预览操作。") }
-    coordinator.execute(plan.intent.request()) {
-        check(plan.fingerprint == previewFingerprint(plan.intent)) { "Preview expired while saving recovery point" }
-        val switched = plan.intent.switchBranch?.let { raw(listOf("switch", it), teach = true).result() }
-        if (switched != null && !switched.ok) switched else {
-            val result = plan.intent.interactive?.let { runInteractiveCommands(it, teach = true) } ?: raw(plan.intent.command(plan.parentCount), teach = true)
-            if (plan.intent.kind == PreviewKind.REBASE) rebaseResult(result) else result.result()
-        }
+    val origin = ownDirectory.resolve("HEAD").readText().trim()
+    val switched = plan.intent.switchBranch?.let { raw(listOf("switch", it), teach = true).result() }
+    if (switched != null && !switched.ok) switched else {
+        val result = plan.intent.interactive?.let { runInteractiveCommands(it, teach = true) } ?: raw(plan.intent.command(plan.parentCount), teach = true)
+        if (switched != null) rememberSwitchOrigin(origin)
+        if (plan.intent.kind == PreviewKind.REBASE) rebaseResult(result) else result.result()
     }
 }
 

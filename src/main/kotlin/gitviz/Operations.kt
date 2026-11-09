@@ -1,14 +1,12 @@
 package gitviz
 
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /** Requests carry the actual command, not localized UI strings. */
-internal enum class OperationKind { INDEX, COMMIT, BRANCH, TAG, MERGE, CHERRY_PICK, REVERT, RESET, STASH, FETCH, PULL, PUSH, CLONE, FILE, RESTORE, REBASE, OTHER }
-internal data class OperationRequest(val kind: OperationKind, val arguments: List<String> = emptyList(), val network: Boolean = false,
-                                     val paths: Set<String> = emptySet(), val revisions: Set<String> = emptySet(), val rebaseRange: Pair<String, String>? = null) {
+internal enum class OperationKind { INDEX, COMMIT, BRANCH, TAG, MERGE, CHERRY_PICK, REVERT, RESET, STASH, FETCH, PULL, PUSH, CLONE, FILE, REBASE, OTHER }
+internal data class OperationRequest(val kind: OperationKind, val arguments: List<String> = emptyList(), val network: Boolean = false) {
     companion object {
         fun command(args: List<String>, network: Boolean = false): OperationRequest {
             var i = 0
@@ -36,26 +34,13 @@ internal data class OperationRequest(val kind: OperationKind, val arguments: Lis
     }
 }
 
-/** Shared across every GitCli for a common repository, including linked worktrees. */
+/** Serializes writes per repository (shared by linked worktrees) and across GitViz processes. No snapshots are taken. */
 internal class OperationCoordinator(private val cli: GitCli) {
-    val recordId: String? get() = records.get()[cli.commonDirectory.canonicalPath]
     fun execute(request: OperationRequest, action: () -> GitResult): GitResult {
         val key = if (request.kind == OperationKind.CLONE) cli.workTree.canonicalPath else cli.commonDirectory.canonicalPath
         return locks.computeIfAbsent(key) { ReentrantLock() }.withLock { withLease(key, request.kind) {
             if (GitProcess.hasUnfinishedProcess()) return@withLease GitResult(GitFailure.UNKNOWN, t("A previous Git process has not stopped. Refresh after it exits.", "先前的 Git 进程尚未结束，请等待后刷新。"))
-            if (request.kind in setOf(OperationKind.OTHER, OperationKind.CLONE, OperationKind.RESTORE) || nesting.get().contains(key)) return@withLease attemptGitOperation(action)
-            attemptGitOperation {
-                cli.requireRecoverySupport()
-                val store = RecoveryStore(cli)
-                val record = store.begin(request)
-                nesting.get().add(key)
-                records.get()[key] = record.id
-                try {
-                    val result = attemptGitOperation(action)
-                    try { val id = store.finish(record, result); result.copy(recoveryId = id.takeIf { result.ok }) }
-                    catch (e: Exception) { GitResult(GitFailure.UNKNOWN, e.message.orEmpty(), needsRecovery = e is RecoveryRequiredException) }
-                } finally { nesting.get().remove(key); records.get().remove(key) }
-            }
+            attemptGitOperation(action)
         } }
     }
     private fun withLease(key: String, kind: OperationKind, action: () -> GitResult): GitResult {
@@ -73,7 +58,5 @@ internal class OperationCoordinator(private val cli: GitCli) {
     companion object {
         private val locks = ConcurrentHashMap<String, ReentrantLock>()
         private val leases = ThreadLocal.withInitial { HashSet<String>() }
-        private val records = ThreadLocal.withInitial { HashMap<String, String>() }
-        private val nesting = ThreadLocal.withInitial { HashSet<String>() }
     }
 }

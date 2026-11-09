@@ -16,8 +16,7 @@ internal fun GitCli.rebaseProgress(): RebaseProgress? {
         oid, oid != null && cleanIndex && status().none { it.conflicted || it.hasUnstaged })
 }
 
-internal fun GitCli.rebase(target: String): GitResult = coordinator.execute(OperationRequest(OperationKind.REBASE,
-    listOf("rebase", target), revisions = setOf(target), rebaseRange = "HEAD" to target)) {
+internal fun GitCli.rebase(target: String): GitResult = coordinator.execute(OperationRequest(OperationKind.REBASE, listOf("rebase", target))) {
     check(currentOperation() == null) { t("Finish the current operation first", "请先完成当前操作") }
     check(raw(listOf("symbolic-ref", "-q", "HEAD")).exitCode == 0) { t("Choose a local branch first", "请先切换到本地分支") }
     check(status().isEmpty()) { t("Commit or stash local changes before rebasing", "请先提交或储藏本地改动，再变基") }
@@ -57,28 +56,6 @@ internal fun GitCli.operationIdentity(): String? {
         control.resolve(name).takeIf { it.isFile }?.readText().orEmpty().trim()
     } else control.readText().trim()
     return "${operation.name}|${attrs.fileKey()}|${attrs.creationTime()}|$data"
-}
-
-/** Include transient paths, not just endpoint trees: an intermediate replay may overwrite ignored data. */
-internal fun GitCli.rebasePaths(range: Pair<String, String>): Set<String> = GitRepo.open(workTree).use { repo ->
-    org.eclipse.jgit.revwalk.RevWalk(repo.repository).use { walk ->
-        val source = checkNotNull(repo.repository.resolve("${range.first}^{commit}"))
-        val upstream = checkNotNull(repo.repository.resolve("${range.second}^{commit}"))
-        walk.markStart(walk.parseCommit(source)); walk.markUninteresting(walk.parseCommit(upstream))
-        org.eclipse.jgit.diff.DiffFormatter(org.eclipse.jgit.util.io.DisabledOutputStream.INSTANCE).use { formatter ->
-            formatter.setRepository(repo.repository)
-            buildSet {
-                while (true) {
-                    val commit = walk.next() ?: break
-                    val parents = if (commit.parentCount == 0) listOf(null) else commit.parents.map { walk.parseCommit(it).tree }
-                    parents.forEach { tree -> formatter.scan(tree, commit.tree).forEach { change ->
-                        if (change.oldPath != org.eclipse.jgit.diff.DiffEntry.DEV_NULL) add(change.oldPath)
-                        if (change.newPath != org.eclipse.jgit.diff.DiffEntry.DEV_NULL) add(change.newPath)
-                    } }
-                }
-            }
-        }
-    }
 }
 
 /** Drafts belong to a native operation and, during rebase, the particular stopped commit. */

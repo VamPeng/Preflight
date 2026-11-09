@@ -50,10 +50,6 @@ class InteractiveRebaseTest {
         assertFalse(r.root.resolve("four").exists())
         assertTrue(listOf("one", "two", "three", "five").all { r.root.resolve(it).isFile })
         assertFalse(r.root.resolve("SHOULD_NOT_EXIST").exists()); assertFalse(r.root.resolve("ALSO_NOT").exists())
-        val undo = r.cli.undo(result.recoveryId)
-        assertTrue(undo.ok, undo.output)
-        assertEquals(five, r.git("rev-parse", "HEAD"))
-        assertTrue(r.root.resolve("four").isFile)
     }
 
     @Test fun `conflicting reorder pauses and continues with edited message after reopening cli`() = RepositoryFixture().use { r ->
@@ -74,10 +70,6 @@ class InteractiveRebaseTest {
         assertTrue(continued.ok, continued.output)
         assertEquals("reviewed message", r.git("log", "-1", "--format=%B"))
         assertEquals("resolved\n", r.root.resolve("a").readText())
-        val record = reopened.recovery.records().first { it.before.operation == null && it.label.startsWith("rebase ") }
-        val recovery = reopened.recovery.preview(record.id)
-        assertTrue(reopened.restorePoint(record.id, recovery.fingerprint).ok)
-        assertEquals(two, r.git("rev-parse", "HEAD"))
     }
 
     @Test fun `invalid plans dirty and merge ranges or stale HEAD never run`(): Unit = RepositoryFixture().use { r ->
@@ -102,7 +94,7 @@ class InteractiveRebaseTest {
         val result = r.cli.executePlan(r.cli.previewEdited(drop))
         assertTrue(result.ok, result.output)
         assertEquals(base, r.git("rev-parse", "HEAD"))
-        assertTrue(r.cli.undo(result.recoveryId).ok)
+        r.git("reset", "--hard", two)
         val reordered = range.copy(edits = listOf(RebaseEdit(two), RebaseEdit(one)))
         assertFalse(r.cli.executePlan(r.cli.previewEdited(reordered)).ok)
         assertTrue(GitCli(r.root, isolated = true).abortOperation().ok)

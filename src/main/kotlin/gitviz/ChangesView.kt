@@ -125,7 +125,7 @@ internal fun ChangesView(
             title = { Text(t("Discard changes", "丢弃改动"), fontSize = TypeScale.Title, fontWeight = FontWeight.SemiBold) },
             text = {
                 Text(
-                    if (f.untracked) t("“${f.path}” is a new file. It will be deleted after saving a recovery point.", "「${f.path}」是新文件，保存恢复点后将被删除。") else t("Unstaged changes to “${f.path}” will be discarded after saving a recovery point.", "「${f.path}」未暂存的改动会在保存恢复点后被丢弃。"),
+                    if (f.untracked) t("“${f.path}” is a new file. It will be permanently deleted.", "「${f.path}」是新文件，将被永久删除。") else t("Unstaged changes to “${f.path}” will be permanently discarded.", "「${f.path}」未暂存的改动将被永久丢弃。"),
                     fontSize = TypeScale.Body,
                 )
             },

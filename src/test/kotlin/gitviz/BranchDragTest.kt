@@ -89,28 +89,14 @@ class BranchDragTest {
         r.write("notes.txt", "keep\n")
         assertTrue(r.cli.abortOperation().ok)
         assertEquals("keep\n", r.root.resolve("notes.txt").readText())
-        assertFalse(r.cli.undo().ok)
-        assertTrue("notes.txt" in r.cli.recovery.preview(r.cli.recovery.latest()!!.id).files)
-    }
-    @Test fun `composite merge undo restores original branch`() = RepositoryFixture().use { r ->
-        r.commit(); r.git("branch", "b"); r.git("checkout", "-b", "a"); r.commit("new", "new\n"); r.git("switch", "main")
-        val plan = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "a", switchBranch = "b"))
-        val done = r.cli.executePlan(plan)
-        assertTrue(done.ok, done.output)
-        assertEquals("b", r.git("branch", "--show-current"))
-        assertTrue(r.cli.undo(done.recoveryId).ok)
-        assertEquals("main", r.git("branch", "--show-current"))
-        assertEquals(r.git("rev-parse", "main"), r.git("rev-parse", "b"))
     }
     @Test fun `composite rebase abort restores original branch`() = RepositoryFixture().use { r ->
         r.commit(); r.git("branch", "a"); r.git("checkout", "-b", "b"); r.commit("a", "b\n"); r.git("switch", "a"); r.commit("a", "a\n"); r.git("switch", "main")
         val plan = r.cli.planOperation(OperationIntent(PreviewKind.REBASE, "b", switchBranch = "a"))
         assertEquals(GitFailure.CONFLICT, r.cli.executePlan(plan).failure)
         r.write("notes.txt", "keep\n")
-        assertTrue(r.cli.abortOperation().ok)
+        assertTrue(GitCli(r.root, isolated = true).abortOperation().ok) // a restarted app still returns to the original branch
         assertEquals("keep\n", r.root.resolve("notes.txt").readText())
-        assertFalse(r.cli.undo().ok)
-        assertTrue("notes.txt" in r.cli.recovery.preview(r.cli.recovery.latest()!!.id).files)
         assertEquals("main", r.git("branch", "--show-current"))
         assertEquals("first\n", r.root.resolve("a").readText())
     }

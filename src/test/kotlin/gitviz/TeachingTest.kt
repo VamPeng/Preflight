@@ -35,7 +35,7 @@ class TeachingTest {
         assertFalse("Bearer abc" in formatGitCommand(listOf("-c", "http.extraheader=Authorization: Bearer abc", "fetch")))
     }
 
-    @Test fun `partial staging explains stdin and temporary index while undo has no fake command`() = RepositoryFixture().use { r ->
+    @Test fun `partial staging explains stdin and temporary index`() = RepositoryFixture().use { r ->
         r.commit(); r.write("a", "changed\n")
         val doc = r.cli.patchDocument(r.cli.status().single(), false)
         val result = Teaching.capture(true) { r.cli.applySelection(doc, doc.changes) }
@@ -44,11 +44,6 @@ class TeachingTest {
         assertTrue(result.lessons.all { it.command!!.startsWith("git apply --cached") })
         assertTrue(result.lessons.all { "temporary index" in it.explanation || "临时暂存区" in it.explanation })
         assertTrue(result.lessons.all { "stdin" in it.explanation || "标准输入" in it.explanation })
-        val undo = Teaching.capture(true) { r.cli.undo(result.recoveryId) }
-        assertTrue(undo.ok, undo.output)
-        assertNull(undo.lessons.single().command)
-        assertEquals("first", r.git("show", ":a"))
-        assertEquals("changed\n", r.root.resolve("a").readText())
     }
 
     @Test fun `preview and background reads are absent but executing frozen plan is recorded`() = RepositoryFixture().use { r ->

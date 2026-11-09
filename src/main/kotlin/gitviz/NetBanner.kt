@@ -64,9 +64,7 @@ data class NetStatus(
     val nextLabel: String = "",
     val output: String = "",
     val id: Long = statusIds.incrementAndGet(),
-    val recoveryId: String? = null,
     val lessons: List<GitLesson> = emptyList(),
-    val needsRecovery: Boolean = false,
 )
 
 internal fun describe(op: NetOp, result: GitResult): NetStatus {
@@ -83,7 +81,7 @@ internal fun describe(op: NetOp, result: GitResult): NetStatus {
         GitFailure.UNKNOWN -> NetStatus(t("Check repository state", "请核对仓库状态"), result.output, NetState.WARNING)
         GitFailure.NOT_MERGED, GitFailure.OTHER ->
             NetStatus(failedTitle(op.running), errorSummary(result.output), NetState.FAILED, op, t("Retry", "重试"))
-    }).copy(output = result.output, recoveryId = result.recoveryId, lessons = result.lessons, needsRecovery = result.needsRecovery)
+    }).copy(output = result.output, lessons = result.lessons)
 }
 
 /** 分支、合并这些本地操作的结果。running 形如「正在合并」。 */
@@ -98,11 +96,11 @@ internal fun describeAction(running: String, done: String, result: GitResult): N
         NetState.WARNING,
     )
     else -> NetStatus(failedTitle(running), errorSummary(result.output), NetState.FAILED)
-}).copy(output = result.output, recoveryId = result.recoveryId, lessons = result.lessons, needsRecovery = result.needsRecovery)
+}).copy(output = result.output, lessons = result.lessons)
 
 /** 成功提示可自动收起；悬停或阅读详情时保留，警告和错误始终等待用户处理。 */
 @Composable
-internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: () -> Unit, onUndo: (() -> Unit)? = null, onRecovery: (() -> Unit)? = null) {
+internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var expanded by remember(status) { mutableStateOf(false) }
@@ -140,8 +138,6 @@ internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: 
                 if (status.detail.isNotBlank()) Text(status.detail, fontSize = TypeScale.Small, color = Palette.Muted,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            if (onUndo != null) BannerButton(t("Undo local change", "撤销本地改动"), onUndo)
-            if (status.needsRecovery && !running && onRecovery != null) BannerButton(t("Resolve recovery issue…", "处理恢复问题…"), onRecovery)
             status.next?.let { op -> BannerButton(status.nextLabel) { onAction(op) } }
             if (!running) BannerButton(t("Close", "关闭"), onDismiss)
         }

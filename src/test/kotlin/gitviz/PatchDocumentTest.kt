@@ -17,10 +17,6 @@ class PatchDocumentTest {
         assertContentEquals(index, r.cli.ownDirectory.resolve("index").readBytes(), "staged diff")
         r.cli.patchDocument(file, true)
         assertContentEquals(index, r.cli.ownDirectory.resolve("index").readBytes())
-        val undo = r.cli.undo(staged.recoveryId)
-        assertTrue(undo.ok, undo.output)
-        assertEquals("before", r.git("show", ":a"))
-        assertEquals("after\n", r.root.resolve("a").readText())
     }
     @Test fun `selected deletion and addition are independent and worktree stays unchanged`() = RepositoryFixture().use { r ->
         r.commit("a", "one\ntwo\nthree\n"); r.write("a", "one\nTWO\nthree\nfour\n")
@@ -111,15 +107,13 @@ class PatchDocumentTest {
         assertNotNull(oldLarge.unavailable)
         assertTrue(oldLarge.lines.isEmpty())
     }
-    @Test fun `split index is installed as complete index and undo restores it`() = RepositoryFixture().use { r ->
+    @Test fun `split index is installed as complete index`() = RepositoryFixture().use { r ->
         r.commit(); r.git("update-index", "--split-index"); r.write("a", "new\n")
         val doc = r.cli.patchDocument(r.cli.status().single(), false)
         val result = r.cli.applySelection(doc, doc.changes)
         assertTrue(result.ok, result.output)
         assertEquals("new", r.git("show", ":a"))
-        val undo = r.cli.undo(result.recoveryId)
-        assertTrue(undo.ok, undo.output)
-        assertEquals("first", r.git("show", ":a"))
         assertEquals("new\n", r.root.resolve("a").readText())
+        assertFalse(r.cli.ownDirectory.resolve("index.lock").exists())
     }
 }

@@ -19,26 +19,7 @@ class RebaseTest {
         assertTrue(done.ok, done.output)
         assertNull(restarted.currentOperation())
         assertEquals("topic", r.git("branch", "--show-current"))
-        assertNull(done.recoveryId)
-        assertFalse(restarted.undo().ok)
-        val point = restarted.recovery.latest()!!
-        assertTrue(restarted.restorePoint(point.id, restarted.recovery.preview(point.id).fingerprint).ok)
-        assertEquals(original, r.git("rev-parse", "HEAD"))
-        assertEquals("topic\n", r.root.resolve("a").readText())
-    }
-
-    @Test fun `external replacement rebase does not acquire an old recovery parent`() = RepositoryFixture().use { r ->
-        r.commit(); r.git("branch", "topic"); r.commit("a", "main\n"); r.git("switch", "topic"); r.commit("a", "topic\n")
-        r.cli.rebase("main")
-        val old = r.cli.recovery.records().first { it.state == RecordState.CONFLICTED }.id
-        r.git("rebase", "--abort")
-        r.commit("new", "later\n")
-        GitProcess.execute(r.root, listOf("rebase", "main"))
-        assertTrue(r.cli.resolveWhole("a", false).ok)
-        val result = r.cli.continueOperation()
-        assertTrue(result.ok, result.output)
-        assertNull(result.recoveryId)
-        assertEquals(RecordState.CONFLICTED, r.cli.recovery.records().first { it.id == old }.state)
+        assertNotEquals(original, r.git("rev-parse", "HEAD"))
     }
 
     @Test fun `abort restores tip and rebase control directory defines paused state`() = RepositoryFixture().use { r ->

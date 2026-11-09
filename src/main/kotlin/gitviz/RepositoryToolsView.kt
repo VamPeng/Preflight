@@ -74,7 +74,7 @@ private enum class RepositoryTool { WORKTREES, SUBMODULES, LFS, SUBTREE, COMPARE
             else TextButton(enabled = !busy && prefix.isNotBlank() && remote.isNotBlank() && ref.isNotBlank(), onClick = {
                 val request = SubtreeRequest(prefix, remote, ref, add, squash, head)
                 val command = formatGitCommand(listOf("subtree", if (add) "add" else "pull", "--prefix=$prefix") + (if (squash) listOf("--squash") else emptyList()) + listOf(remote, ref))
-                actions.ask(DialogSpec(t("Review subtree operation", "检查子树操作"), "$command\n\n" + t("Downloads from this source and changes the local index, files and history. A recovery point is saved first. The source tree must not contain submodules. Use Undo after completion; if an impact review is needed, follow the recovery issue action.", "将从此来源下载，并修改本地暂存区、文件和历史。操作前保存恢复点；来源树不能包含子模块。完成后可使用撤销；需要进一步核对时，会提供恢复问题处理入口。"), t("Execute", "执行")) { _, _ ->
+                actions.ask(DialogSpec(t("Review subtree operation", "检查子树操作"), "$command\n\n" + t("Downloads from this source and changes the local index, files and history. To go back afterwards, reset the branch to its previous commit from the reflog.", "将从此来源下载，并修改本地暂存区、文件和历史。如需回退，可从 reflog 找到原提交并重置分支。"), t("Execute", "执行")) { _, _ ->
                     actions.run(t("Updating subtree", "正在更新子树"), t("Subtree updated", "子树已更新")) { applySubtree(request) }
                 })
             }) { Text(t("Review and execute…", "检查并执行…")) }
