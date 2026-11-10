@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,7 +52,10 @@ data class MenuItem(
     val action: () -> Unit = {},
 ) : MenuEntry
 
-/** 需要用户确认或输入的操作。input 不为空时显示输入框，modes 为真时显示重置方式。 */
+/**
+ * 需要用户确认或输入的操作。input 不为空时显示输入框，modes 为真时显示重置方式。
+ * option 不为空时多一个勾选框，确认时改调 option.onConfirm。
+ */
 data class DialogSpec(
     val title: String,
     val message: String,
@@ -59,7 +65,16 @@ data class DialogSpec(
     val initial: String = "",
     val danger: Boolean = false,
     val modes: Boolean = false,
-    val onConfirm: (text: String, mode: ResetMode) -> Unit,
+    val option: DialogOption? = null,
+    val onConfirm: (text: String, mode: ResetMode) -> Unit = { _, _ -> },
+)
+
+/** 对话框里的勾选框。note 只在勾上时显示，用来说明勾上的后果。 */
+data class DialogOption(
+    val label: String,
+    val checked: Boolean,
+    val note: String? = null,
+    val onConfirm: (text: String, checked: Boolean) -> Unit,
 )
 
 /** 菜单项要用到的动作，由窗口提供。run 的两段文字是进行中和完成后的提示。 */
@@ -69,6 +84,8 @@ internal class GitActions(
     val copy: (String) -> Unit,
     val preview: (OperationIntent) -> Unit = {},
     val editRebase: (String) -> Unit = {},
+    /** 工作区有几个改动，用来提醒切换分支时这些改动会跟过去。 */
+    val pendingChanges: () -> Int = { 0 },
 )
 
 internal fun commitMenu(c: CommitInfo, isHead: Boolean, branch: String?, a: GitActions): List<MenuEntry> {
@@ -80,7 +97,7 @@ internal fun commitMenu(c: CommitInfo, isHead: Boolean, branch: String?, a: GitA
                 a.run(t("Checking out", "正在检出"), t("Checked out $short", "已检出 $short")) { checkout(c.id) }
             })
         },
-        MenuItem(t("New branch…", "新建分支…")) { askNewBranch(c, a) },
+        MenuItem(t("New branch…", "新建分支…")) { askNewBranch(c.id, short, a) },
         MenuItem(t("Add tag…", "打标签…")) {
             a.ask(DialogSpec(t("Add tag", "打标签"), t("Add a tag to $short.", "给 $short 打一个标签。"), t("Create tag", "创建标签"), input = t("Tag name", "标签名")) { name, _ ->
                 a.run(t("Creating tag", "正在创建标签"), t("Created tag $name", "已创建标签 $name")) { tag(name, c.id) }
@@ -113,15 +130,31 @@ internal fun commitMenu(c: CommitInfo, isHead: Boolean, branch: String?, a: GitA
     )
 }
 
-internal fun askNewBranch(c: CommitInfo, a: GitActions) {
-    a.ask(DialogSpec(t("New branch", "新建分支"), t("Create a branch from ${c.id.take(7)}.", "从 ${c.id.take(7)} 创建分支。"), t("Create branch", "创建分支"), input = t("Branch name", "分支名")) { name, _ ->
-        a.run(t("Creating branch", "正在创建分支"), t("Created branch $name", "已创建分支 $name")) { createBranch(name, c.id) }
-    })
+/**
+ * 从 start（提交 id 或 refs/heads/…）新建分支，默认建完切过去。from 是对话框里给人看的起点。
+ * 切换时工作区的改动交给 git 判断：不冲突就带过去，冲突就拒绝，分支也不会建出来。
+ */
+internal fun askNewBranch(start: String, from: String, a: GitActions) {
+    val changes = a.pendingChanges()
+    val option = DialogOption(
+        t("Switch to it after creating", "创建后切换过去"), checked = true,
+        note = if (changes > 0) t(
+            "$changes changed file(s) will come along to the new branch. If they conflict with the starting point, Git refuses and the branch isn't created.",
+            "工作区的 $changes 个改动会带到新分支；和起点冲突时 Git 会拒绝，分支也不会创建。",
+        ) else null,
+    ) { name, switch ->
+        if (switch) a.run(t("Creating branch", "正在创建分支"), t("Created and switched to $name", "已创建并切换到 $name")) { createAndSwitch(name, start) }
+        else a.run(t("Creating branch", "正在创建分支"), t("Created branch $name", "已创建分支 $name")) { createBranch(name, start) }
+    }
+    a.ask(DialogSpec(t("New branch", "新建分支"), t("Create a branch from $from.", "从 $from 创建分支。"), t("Create branch", "创建分支"), input = t("Branch name", "分支名"), option = option))
 }
 
-internal fun branchMenu(name: String, isCurrent: Boolean, target: String?, a: GitActions): List<MenuEntry> = listOf(
+internal fun branchMenu(name: String, tip: String, isCurrent: Boolean, target: String?, a: GitActions): List<MenuEntry> = listOf(
     MenuItem(t("Switch to this branch", "切换到这个分支"), enabled = !isCurrent) {
         a.run(t("Switching", "正在切换"), t("Switched to $name", "已切换到 $name")) { switchTo(name) }
+    },
+    MenuItem(t("New branch from here…", "从这里新建分支…")) {
+        askNewBranch("refs/heads/$name", t("$name (${tip.take(7)})", "$name（${tip.take(7)}）"), a)
     },
     MenuItem(t("Merge into ${target ?: "HEAD"}…", "合并到 ${target ?: "当前提交"}…"), enabled = !isCurrent) {
         a.preview(OperationIntent(PreviewKind.MERGE, "refs/heads/$name"))
@@ -237,6 +270,7 @@ private class AnchorPositionProvider(private val anchor: IntOffset) : PopupPosit
 internal fun ActionDialog(spec: DialogSpec, onDismiss: () -> Unit) {
     var text by remember(spec) { mutableStateOf(spec.initial) }
     var mode by remember(spec) { mutableStateOf(ResetMode.MIXED) }
+    var checked by remember(spec) { mutableStateOf(spec.option?.checked ?: false) }
     val canConfirm = spec.input == null || spec.optional || text.isNotBlank()
     val shape = RoundedCornerShape(5.dp)
     val focus = remember { FocusRequester() }
@@ -273,12 +307,31 @@ internal fun ActionDialog(spec: DialogSpec, onDismiss: () -> Unit) {
                         }
                     }
                 }
+                spec.option?.let { option ->
+                    Row(
+                        Modifier.clip(shape).clickable { checked = !checked }.padding(end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // 去掉 Material 默认的 48dp 触控区，勾选框才和上面的输入框左边对齐；整行都能点
+                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                            Checkbox(checked, { checked = it })
+                        }
+                        Text(option.label, fontSize = TypeScale.Body, modifier = Modifier.padding(start = 6.dp))
+                    }
+                    if (checked && option.note != null) {
+                        Text(
+                            option.note, fontSize = TypeScale.Small, color = Palette.Muted,
+                            modifier = Modifier.fillMaxWidth().background(Palette.Rail, shape).padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(enabled = canConfirm, onClick = {
                 onDismiss()
-                spec.onConfirm(text.trim(), mode)
+                val option = spec.option
+                if (option != null) option.onConfirm(text.trim(), checked) else spec.onConfirm(text.trim(), mode)
             }) { Text(spec.confirm, color = if (spec.danger) Palette.Removed else Palette.AccentInk) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(t("Cancel", "取消"), color = Palette.Ink) } },

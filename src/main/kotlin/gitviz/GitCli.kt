@@ -224,6 +224,9 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
 
     fun createBranch(name: String, commitId: String): GitResult = run("branch", "--", name, commitId)
 
+    /** 新建分支并切过去。工作区改动和起点冲突时 git 拒绝，分支不会建出来。 */
+    fun createAndSwitch(name: String, start: String): GitResult = run("switch", "-c", name, start)
+
     fun switchTo(branch: String): GitResult = run("switch", branch)
 
     /** 检出某个提交，进入分离 HEAD。 */

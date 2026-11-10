@@ -38,7 +38,7 @@ class ScreenshotTest {
                         }
                         VerticalDivider()
                         Column(Modifier.weight(1f).fillMaxHeight()) {
-                            Toolbar(state, false, 18.dp, "", {}, {}, {}, netBusy = false, onPull = {}, onPush = {}, onNewBranch = {}, canStash = true, onStash = {})
+                            Toolbar(state, false, 18.dp, "", {}, {}, {}, netBusy = false, onPull = {}, onPush = {}, canStash = true, onStash = {})
                             HorizontalDivider()
                             CommitHistoryLayout(selected != null, Modifier.fillMaxWidth().weight(1f),
                                 list = { historyInsets ->
@@ -173,6 +173,12 @@ class ScreenshotTest {
         val actions = GitActions({}, { _, _, _ -> }, {})
         renderPopup("menu") { GitMenuPopup(commitMenu(commit, isHead = false, "main", actions), onDismiss = {}) }
         renderPopup("reset") { ActionDialog(DialogSpec("重置 main", "把 main 移到 abcdef0。", "重置", danger = true, modes = true) { _, _ -> }) {} }
+        var asked: DialogSpec? = null
+        val branchActions = GitActions({ asked = it }, { _, _, _ -> }, {}, pendingChanges = { 3 })
+        val branchItems = branchMenu("feature/logging", "abcdef0123", isCurrent = false, "main", branchActions)
+        renderPopup("branch-menu") { GitMenuPopup(branchItems, onDismiss = {}) }
+        branchItems.filterIsInstance<MenuItem>()[1].action()
+        renderPopup("new-branch") { ActionDialog(checkNotNull(asked)) {} }
     }
 
     @Test

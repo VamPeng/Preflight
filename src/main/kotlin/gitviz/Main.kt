@@ -522,6 +522,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         preview = { if (!operationBusy && !loading) preview = it },
         editRebase = { if (!operationBusy && !loading) interactiveBase = it },
         ask = { dialog = it },
+        pendingChanges = { working.size },
         run = { running, done, op ->
             runOp(NetStatus(running, "", NetState.RUNNING), { describeAction(running, done, it) }, op = op)
         },
@@ -744,7 +745,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                         if (cli != null) {
                             menuAnchor = null
                             val full = (if (ref.label.kind == RefKind.BRANCH) "refs/heads/" else "refs/remotes/") + ref.label.name
-                            val own = if (ref.label.kind == RefKind.BRANCH) branchMenu(ref.label.name, ref.label.isCurrent, currentBranch, actions)
+                            val own = if (ref.label.kind == RefKind.BRANCH) branchMenu(ref.label.name, ref.commitId, ref.label.isCurrent, currentBranch, actions)
                                 else listOf(MenuItem(t("Check out as local branch", "检出为本地分支")) {
                                     actions.run(t("Checking out", "正在检出"), t("Checked out ${ref.label.name}", "已检出 ${ref.label.name}")) { checkoutRemote(ref.label.name) }
                                 })
@@ -787,7 +788,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     onFetch = { registry.execute("fetch") },
                     onPull = { registry.execute("pull") },
                     onPush = { registry.execute("push") },
-                    onNewBranch = { selected?.let { askNewBranch(it, actions) } },
                     canStash = working.isNotEmpty(),
                     onStash = {
                         registry.execute("stash")
@@ -1117,7 +1117,6 @@ internal fun Toolbar(
     onPull: () -> Unit,
     onFetch: () -> Unit = {},
     onPush: () -> Unit,
-    onNewBranch: () -> Unit,
     canStash: Boolean,
     onStash: () -> Unit,
     searchFocus: FocusRequester? = null,
@@ -1155,7 +1154,6 @@ internal fun Toolbar(
                 ToolButton(t("Fetch", "获取"), Icons.Fetch, enabled = canSync, onClick = onFetch)
                 ToolButton(t("Pull", "拉取"), Icons.Pull, enabled = canSync, onClick = onPull, onMenu = onPullMenu)
                 ToolButton(t("Push", "推送"), Icons.Push, enabled = canSync, onClick = onPush, onMenu = onPushMenu)
-                ToolButton(t("New branch", "新建分支"), Icons.Branch, enabled = canSync, onClick = onNewBranch)
                 ToolButton(t("Stash", "储藏"), Icons.Stash, enabled = canSync && canStash, onClick = onStash)
             }
             SearchField(query, onQuery, searchFocus, onSearchEscape)

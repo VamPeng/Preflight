@@ -639,8 +639,69 @@ class GitCliTest {
 
     @Test
     fun `current branch cannot be deleted or renamed from its menu`() {
-        assertTrue(labels(branchMenu("main", isCurrent = true, "main", noActions)).none { it.enabled })
-        assertTrue(labels(branchMenu("side", isCurrent = false, "main", noActions)).all { it.enabled })
+        assertEquals(listOf("New branch from here…"), labels(branchMenu("main", "abcdef0123", isCurrent = true, "main", noActions)).filter { it.enabled }.map { it.label })
+        assertTrue(labels(branchMenu("side", "abcdef0123", isCurrent = false, "main", noActions)).all { it.enabled })
+    }
+
+    /** 点分支菜单的「从这里新建分支」，返回弹出的对话框；确认时在 work 上真的执行。 */
+    private fun newBranchDialog(branch: String, changes: Int = 0): DialogSpec {
+        var asked: DialogSpec? = null
+        val cli = GitCli(work)
+        val actions = GitActions({ asked = it }, { _, _, op -> cli.op() }, {}, pendingChanges = { changes })
+        labels(branchMenu(branch, git(work, "rev-parse", branch), isCurrent = branch == branch(), "main", actions))
+            .single { it.label == "New branch from here…" }.action()
+        return checkNotNull(asked)
+    }
+
+    @Test
+    fun `new branch from a branch starts at its tip and switches by default`() {
+        prepare()
+        git(work, "checkout", "-q", "-b", "side")
+        commit(work, "b", "x\n")
+        val sideTip = head()
+        git(work, "checkout", "-q", "main")
+
+        val dialog = newBranchDialog("side")
+        val option = checkNotNull(dialog.option)
+        assertTrue(option.checked)
+        assertEquals(null, option.note)
+        assertTrue(dialog.message.contains(sideTip.take(7)))
+
+        option.onConfirm("topic", true)
+        assertEquals("topic", branch())
+        assertEquals(sideTip, head())
+    }
+
+    @Test
+    fun `new branch without switching leaves the current branch alone`() {
+        prepare()
+        git(work, "branch", "side")
+        checkNotNull(newBranchDialog("side").option).onConfirm("topic", false)
+        assertEquals("main", branch())
+        assertTrue("topic" in git(work, "branch"))
+    }
+
+    @Test
+    fun `switching to a new branch carries changes or refuses without creating it`() {
+        prepare()
+        git(work, "checkout", "-q", "-b", "side")
+        commit(work, "a", "changed on side\n")
+        git(work, "checkout", "-q", "main")
+
+        File(work, "a").writeText("dirty\n")
+        val dialog = newBranchDialog("side", changes = 1)
+        assertTrue(checkNotNull(dialog.option?.note).contains("1"))
+        val cli = GitCli(work)
+        assertFalse(cli.createAndSwitch("clash", "refs/heads/side").ok)
+        assertEquals("main", branch())
+        assertFalse("clash" in git(work, "branch"))
+        assertEquals("dirty\n", File(work, "a").readText())
+
+        git(work, "checkout", "-q", "--", "a")
+        File(work, "new.txt").writeText("keep\n")
+        assertTrue(cli.createAndSwitch("carry", "refs/heads/side").ok)
+        assertEquals("carry", branch())
+        assertEquals("keep\n", File(work, "new.txt").readText())
     }
 
     @Test

@@ -92,7 +92,7 @@ input::placeholder{color:var(--faint)}
       </div>
       <div style="flex:1"></div>
       <div style="display:flex;align-items:center;gap:2px">
-        <sc-for list="{{tools}}" as="t" hint-placeholder-count="5">
+        <sc-for list="{{tools}}" as="t" hint-placeholder-count="4">
           <button class="tool" onClick="{{t.run}}" aria-label="{{t.label}}" style="width:54px;height:42px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;opacity:{{t.opacity}}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"/></svg>
             <span style="font-size:11px;color:var(--muted)">{{t.label}}</span>
@@ -658,12 +658,11 @@ class Component extends DCLogic {
       { label: '刷新', icon: 'M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5', opacity: 1, off: false },
       { label: '拉取', icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3', opacity: 0.4, off: true },
       { label: '推送', icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12', opacity: 0.4, off: true },
-      { label: '新建分支', icon: 'M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9', opacity: 0.4, off: true },
+      // 新建分支不放工具栏：从分支或提交的右键菜单进入，起点明确
       { label: '储藏', icon: 'M21 8v13H3V8 M1 3h22v5H1z M10 12h4', opacity: 0.4, off: true },
     ].map((t, i) => Object.assign(t, {
       opacity: 1, off: false,
-      run: i === 4 ? () => (rem > 0 ? set({ modal: 'stash', field: '' }) : flash('没有可储藏的改动'))
-        : i === 3 ? () => set({ modal: 'branch', field: '' })
+      run: i === 3 ? () => (rem > 0 ? set({ modal: 'stash', field: '' }) : flash('没有可储藏的改动'))
         : i === 1 ? () => doPull()
           : i === 2 ? () => doPush()
             : () => flash('已刷新：13 个提交'),
@@ -813,7 +812,9 @@ class Component extends DCLogic {
     const note = fact('var(--muted)'), ok = fact('var(--add)'), warn = fact('var(--warn)'), bad = fact('var(--del)');
     const DLG = {
       checkout: { title: '检出提交', desc: '工作区会切换到 ' + sh + '，进入分离 HEAD 状态。', input: false, ok: '检出' },
-      branch: { title: '新建分支', desc: '从 ' + sh + ' 创建分支。', input: true, label: '分支名', ph: 'feature/my-branch', ok: '创建分支' },
+      // 起点：从分支右键进来时是那个分支的最新提交，从提交右键进来时是那个提交
+      branch: { title: '新建分支', desc: '从 ' + (s.target ? nameOf(s.target) + '（' + tips[s.target] + '）' : sh) + ' 创建分支。', input: true, label: '分支名', ph: 'feature/my-branch', ok: '创建分支', remember: '创建后切换过去',
+        facts: s.remember && rem > 0 ? [note('工作区的 ' + rem + ' 个改动会带到新分支；和起点冲突时 Git 会拒绝，分支也不会创建')] : [] },
       tag: { title: '打标签', desc: '给 ' + sh + ' 打一个标签。', input: true, label: '标签名', ph: 'v0.2.0', ok: '创建标签' },
       cherry: { title: 'Cherry-pick', desc: '把 ' + sh + ' 的改动应用到 ' + s.current + ' 上。', input: false, ok: '应用', facts: [ok('预计没有冲突')] },
       // 操作前的后果摘要：只读计算，不演练、不复制工作区；确认后直接执行
@@ -875,7 +876,7 @@ class Component extends DCLogic {
     const mergeTo = '合并到 ' + s.current + '…';
     const commitItems = [
       item('检出这个提交', open('checkout')),
-      item('新建分支…', open('branch')),
+      item('新建分支…', () => set({ ctx: null, modal: 'branch', field: '', target: '', remember: true })),
       item('打标签…', open('tag')),
       sep,
       item(mergeTo, open('merge'), { off: isHead }),
@@ -892,6 +893,7 @@ class Component extends DCLogic {
     const openBranch = (modal, field) => () => set({ ctx: null, modal, field, target: menuBranch });
     const branchItems = [
       item('切换到这个分支', () => flash('已切换到 ' + nameOf(menuBranch), { ctx: null, current: menuBranch, sel: tips[menuBranch], fileIdx: 0 }), { off: onCurrent }),
+      item('从这里新建分支…', () => set({ ctx: null, modal: 'branch', field: '', target: menuBranch, remember: true })),
       item(mergeTo, openBranch('merge', ''), { off: onCurrent }),
       item('将当前分支变基到这里…', openBranch('rebase', ''), { off: onCurrent }),
       sep,
@@ -1044,7 +1046,11 @@ class Component extends DCLogic {
         flash('已删除储藏', { modal: null, stashes: s.stashes.filter((x) => x !== stCur), stashIdx: 0, stashFile: 0 });
         return;
       }
-      if (s.modal === 'branch') flash('已创建分支 ' + name, { modal: null, extraBranches: s.extraBranches.concat([{ name, id: s.sel }]) });
+      if (s.modal === 'branch') {
+        const created = { modal: null, extraBranches: s.extraBranches.concat([{ name, id: s.target ? tips[s.target] : s.sel }]) };
+        if (s.remember) flash('已创建并切换到 ' + name, Object.assign(created, { current: name }));
+        else flash('已创建分支 ' + name, created);
+      }
       else if (s.modal === 'tag') flash('已创建标签 ' + name, { modal: null, extraTags: s.extraTags.concat([{ name, id: s.sel }]) });
       else flash({ checkout: '已检出 ', cherry: '已 cherry-pick ', revert: '已回滚 ' }[s.modal] + sh, { modal: null });
     };
