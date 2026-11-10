@@ -19,7 +19,7 @@ internal object Teaching {
         current.get()?.let { if (it.size < 128) it += GitLesson(null, t(en, zh)) }
     }
 
-    fun command(args: List<String>, input: Boolean = false, temporaryIndex: Boolean = false) {
+    fun command(args: List<String>, input: Boolean = false) {
         val lessons = current.get() ?: return
         if (lessons.size >= 128) return
         var offset = 0
@@ -46,10 +46,7 @@ internal object Teaching {
             "config" -> t("Save the explicitly selected repository setting.", "保存明确选择的仓库设置。")
             else -> t("Git command requested by this operation.", "本次操作请求执行的 Git 命令。")
         }
-        val context = listOfNotNull(
-            if (temporaryIndex) t("Runs against a temporary index; GitViz validates and atomically installs it.", "作用于临时暂存区；GitViz 校验后原子安装。") else null,
-            if (input) t("The selected patch is supplied on stdin; copying this line alone does not supply the patch.", "选中补丁通过标准输入传入；仅复制此行不包含补丁。") else null,
-        ).joinToString(" ")
+        val context = if (input) t("The selected patch is supplied on stdin; copying this line alone does not supply the patch.", "选中补丁通过标准输入传入；仅复制此行不包含补丁。") else ""
         lessons += GitLesson(formatGitCommand(args), listOf(explanation, context).filter { it.isNotEmpty() }.joinToString(" "))
     }
 }

@@ -13,7 +13,7 @@ import java.security.MessageDigest
 /** Complete patch input, independent of truncated display strings. Selections identify original diff rows. */
 internal data class PatchDocument(val file: WorkingFile, val staged: Boolean, val raw: String, val lines: List<DiffLine>,
     val base: ByteArray, val exists: Boolean, val destinationExists: Boolean, val mode: String,
-    val indexStamp: String, val signature: String, val unavailable: String?, val sources: DiffSources? = null) {
+    val signature: String, val unavailable: String?, val sources: DiffSources? = null) {
     val changes: Set<Int> = lines.indices.filter { lines[it].kind in setOf(DiffLineKind.ADDED, DiffLineKind.REMOVED) }.toSet()
     fun hunk(index: Int): Set<Int> = (index + 1 until (index + 1 until lines.size).firstOrNull { lines[it].kind == DiffLineKind.HUNK }.let { it ?: lines.size }).filter { it in changes }.toSet()
     fun patch(selected: Set<Int>): ByteArray {
@@ -92,13 +92,12 @@ internal fun GitCli.indexStamp(): String = digestParts((listOf(ownDirectory.reso
     .flatMap { file -> listOf(file.name.toByteArray(), if (file.exists()) Files.readAllBytes(file.toPath()) else byteArrayOf()) })
 
 internal fun GitCli.patchDocument(file: WorkingFile, staged: Boolean): PatchDocument {
-    val stamp = indexStamp()
     val path = safeWorkingPath(file.path)
     val entry = read("ls-files", "--stage", "-z", "--", ":(literal)${file.path}").split('\u0000').firstOrNull { it.isNotEmpty() }
     val metadata = entry?.substringBefore('\t')?.split(' ')
     var mode = metadata?.first() ?: if (Files.isExecutable(path)) "100755" else "100644"
     fun unavailable(reason: String) = PatchDocument(file, staged, "", emptyList(), byteArrayOf(), metadata != null, true, mode,
-        stamp, digestParts(listOf(stamp.toByteArray(), reason.toByteArray(), entry.orEmpty().toByteArray())), reason)
+        digestParts(listOf(reason.toByteArray(), entry.orEmpty().toByteArray())), reason)
     val maximum = 1_048_576L
     if (staged) {
         val oldSize = raw(listOf("cat-file", "-s", "HEAD:${file.path}"))
@@ -130,7 +129,8 @@ internal fun GitCli.patchDocument(file: WorkingFile, staged: Boolean): PatchDocu
         else -> null
     }
     val destinationExists = if (staged) !text.lineSequence().any { it.startsWith("new file mode ") } else Files.exists(path, NOFOLLOW_LINKS)
-    val signature = digestParts(listOf(stamp.toByteArray(), diff.stdout, base, working, mode.toByteArray(), bytes("config", "--null", "--list"), attrs.toString().toByteArray()))
+    // Everything the patch is built from: a change to any of it means the selection no longer matches.
+    val signature = digestParts(listOf(entry.orEmpty().toByteArray(), diff.stdout, base, working, mode.toByteArray(), attrs.toString().toByteArray()))
     // Freeze highlighter inputs from the same bytes used by the patch. HEAD may move during a read;
     // the full-index header identifies the actual old blob, independently of the current HEAD.
     val oldBlob = Regex("(?m)^index ([0-9a-f]{40})\\.\\.").find(text)?.groupValues?.get(1)
@@ -141,34 +141,16 @@ internal fun GitCli.patchDocument(file: WorkingFile, staged: Boolean): PatchDocu
         else -> bytes("cat-file", "blob", oldBlob)
     }
     val sources = DiffSources(source(file.oldPath ?: file.path, oldBytes), source(file.path, if (staged) base else working))
-    check(stamp == indexStamp()) { "Index changed while loading patch" }
     check(!Files.isRegularFile(path, NOFOLLOW_LINKS) || working.contentEquals(Files.readAllBytes(path))) { "Worktree changed while loading patch" }
-    return PatchDocument(file, staged, text, lines, base, metadata != null, destinationExists, mode, stamp, signature, unsupported, sources)
+    return PatchDocument(file, staged, text, lines, base, metadata != null, destinationExists, mode, signature, unsupported, sources)
 }
 
-internal fun GitCli.applySelection(document: PatchDocument, selected: Set<Int>, beforeInstall: () -> Unit = {}): GitResult =
+/** Stages or unstages the selected lines: the patch goes straight to `git apply --cached`, which locks and writes the index itself. */
+internal fun GitCli.applySelection(document: PatchDocument, selected: Set<Int>): GitResult =
     coordinator.execute(OperationRequest(OperationKind.INDEX, listOf(if (document.staged) "partial-unstage" else "partial-stage", document.file.path))) {
         check(document.signature == patchDocument(document.file, document.staged).signature) { t("Diff changed. Reload and select again.", "Diff 已改变，请重新加载并选择。") }
         val patch = document.patch(selected)
         if (patch.isEmpty()) return@execute GitResult(null, "")
-        val temp = Files.createTempFile(ownDirectory.toPath(), "gitviz-index-", ".tmp").toFile()
-        try {
-            val index = ownDirectory.resolve("index")
-            val environment = mapOf("GIT_INDEX_FILE" to temp.absolutePath)
-            if (index.isFile) index.copyTo(temp, overwrite = true) else { temp.delete(); raw(listOf("read-tree", "--empty"), environment = environment).requireSuccess() }
-            raw(listOf("update-index", "--no-split-index"), environment = environment).requireSuccess()
-            raw(listOf("apply", "--cached", "--check", "--whitespace=nowarn", "-"), patch, environment, teach = true).requireSuccess()
-            raw(listOf("apply", "--cached", "--whitespace=nowarn", "-"), patch, environment, teach = true).requireSuccess()
-            beforeInstall()
-            // Take index.lock like Git does; an existing lock belongs to another process and fails here.
-            val lock = ownDirectory.resolve("index.lock").toPath()
-            Files.createFile(lock)
-            try {
-                check(document.indexStamp == indexStamp()) { t("Index changed concurrently. Reload and select again.", "暂存区被其他进程修改，请重新选择。") }
-                check(document.signature == patchDocument(document.file, document.staged).signature) { "Patch inputs changed before installation" }
-                java.io.FileOutputStream(lock.toFile()).use { out -> temp.inputStream().use { it.copyTo(out) }; out.fd.sync() }
-                Files.move(lock, index.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            } finally { Files.deleteIfExists(lock) }
-            GitResult(null, t("Selected changes updated in index; working files unchanged", "已更新选中改动的暂存状态，工作区文件保持不变"))
-        } finally { temp.delete(); temp.resolveSibling(temp.name + ".lock").delete() }
+        val applied = raw(listOf("apply", "--cached", "--whitespace=nowarn", "-"), patch, teach = true).result()
+        if (applied.ok) GitResult(null, t("Selected changes updated in index; working files unchanged", "已更新选中改动的暂存状态，工作区文件保持不变")) else applied
     }

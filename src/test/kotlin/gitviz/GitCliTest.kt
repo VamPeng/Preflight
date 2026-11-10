@@ -87,7 +87,7 @@ class GitCliTest {
         val rejected = cli.push()
         assertEquals(GitFailure.REJECTED, rejected.failure)
 
-        assertTrue(cli.pull().ok)
+        assertTrue(cli.pull(checkNotNull(cli.savedPull())).ok)
         assertTrue(cli.push().ok)
         assertEquals(git(work, "rev-parse", "HEAD"), git(origin, "rev-parse", "main"))
     }
@@ -100,7 +100,85 @@ class GitCliTest {
         git(other, "push", "-q")
         commit(work, "a", "ours\n")
 
-        assertEquals(GitFailure.CONFLICT, GitCli(work).pull().failure)
+        assertEquals(GitFailure.CONFLICT, GitCli(work).let { it.pull(checkNotNull(it.savedPull())) }.failure)
+    }
+
+    @Test
+    fun `force push replaces rewritten history but refuses when origin moved since the last fetch`() {
+        prepare()
+        commit(work, "b", "mine\n")
+        val cli = GitCli(work)
+        assertTrue(cli.push().ok)
+        git(work, "commit", "-q", "--amend", "-m", "rewritten")
+        assertEquals(GitFailure.REJECTED, cli.push().failure)
+        val forced = cli.push(force = true)
+        assertTrue(forced.ok, forced.output)
+        assertEquals(git(work, "rev-parse", "HEAD"), git(origin, "rev-parse", "main"))
+
+        cloneTo(other)
+        commit(other, "c", "theirs\n")
+        git(other, "push", "-q")
+        val theirs = git(origin, "rev-parse", "main")
+        git(work, "commit", "-q", "--amend", "-m", "rewritten again")
+        assertFalse(cli.push(force = true).ok)
+        assertEquals(theirs, git(origin, "rev-parse", "main"))
+    }
+
+    @Test
+    fun `remote branch is checked out as a tracking local branch and reused afterwards`() {
+        prepare()
+        cloneTo(other)
+        git(other, "switch", "-q", "-c", "feature/x")
+        commit(other, "x", "x\n")
+        git(other, "push", "-q", "-u", "origin", "feature/x")
+        val cli = GitCli(work)
+        assertTrue(cli.fetch().ok)
+        val first = cli.checkoutRemote("origin/feature/x")
+        assertTrue(first.ok, first.output)
+        assertEquals("feature/x", git(work, "branch", "--show-current"))
+        assertEquals("origin/feature/x", git(work, "rev-parse", "--abbrev-ref", "@{upstream}"))
+        git(work, "switch", "-q", "main")
+        assertTrue(cli.checkoutRemote("origin/feature/x").ok)
+        assertEquals("feature/x", git(work, "branch", "--show-current"))
+        assertFalse(cli.checkoutRemote("nowhere/feature/x").ok)
+    }
+
+    @Test
+    fun `stage all and unstage all cover untracked files, deletions and an unborn repository`() {
+        prepare()
+        commit(work, "b", "b\n")
+        File(work, "a").writeText("changed\n"); File(work, "b").delete(); File(work, "dir").mkdirs(); File(work, "dir/[new].txt").writeText("new\n")
+        val cli = GitCli(work)
+        assertTrue(cli.stageAll().ok)
+        assertTrue(cli.status().all { it.hasStaged && !it.hasUnstaged })
+        assertEquals(3, cli.status().size)
+        assertTrue(cli.unstageAll().ok)
+        assertTrue(cli.status().none { it.hasStaged })
+        assertEquals("changed\n", File(work, "a").readText())
+
+        val fresh = File(root, "fresh").also { it.mkdirs() }
+        git(fresh, "init", "-q")
+        File(fresh, "one").writeText("1\n")
+        val unborn = GitCli(fresh)
+        assertTrue(unborn.stageAll().ok)
+        assertTrue(unborn.status().single().hasStaged)
+        assertTrue(unborn.unstageAll().ok)
+        assertTrue(unborn.status().single().untracked)
+    }
+
+    @Test
+    fun `interrupting the thread stops a running git process promptly`() {
+        prepare()
+        var result: GitExecution? = null
+        val started = System.nanoTime()
+        val runner = Thread { result = GitProcess.execute(work, listOf("-c", "alias.wait=!sleep 30", "wait")) }.apply { start() }
+        Thread.sleep(500)
+        runner.interrupt()
+        runner.join(10_000)
+        assertFalse(runner.isAlive)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 10_000)
+        assertTrue(checkNotNull(result).uncertain)
+        assertFalse(GitProcess.hasUnfinishedProcess())
     }
 
     @Test

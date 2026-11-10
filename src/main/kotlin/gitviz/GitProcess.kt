@@ -18,7 +18,7 @@ internal data class GitExecution(val exitCode: Int, val stdout: ByteArray, val s
 
 internal object GitProcess {
     fun execute(directory: File, args: List<String>, input: ByteArray? = null, environment: Map<String, String> = emptyMap(),
-                timeoutSeconds: Long = 120, isolated: Boolean = false, preparedCheck: (() -> Unit)? = null): GitExecution {
+                timeoutSeconds: Long = 120, isolated: Boolean = false): GitExecution {
         // Git diff may refresh stat entries even with GIT_OPTIONAL_LOCKS=0 (Apple Git 2.50).
         // Inspection must not silently change the index bytes (partial staging and previews compare them).
         val process = ProcessBuilder(listOf("git", "-c", "diff.autoRefreshIndex=false") + args).directory(directory).apply {
@@ -42,44 +42,10 @@ internal object GitProcess {
         val failure = AtomicReference<Throwable?>()
         fun worker(body: () -> Unit) = Thread { try { body() } catch (e: Throwable) { failure.compareAndSet(null, e) } }
             .apply { isDaemon = true; start() }
-        val replies = java.util.concurrent.LinkedBlockingQueue<String>()
-        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
-        val decision = Any()
-        fun stopSafely() {
-            if (preparedCheck != null && process.isAlive) {
-                cancelled.set(true)
-                synchronized(decision) {
-                    runCatching { process.outputStream.write("abort\n".toByteArray()); process.outputStream.flush() }
-                    runCatching { process.outputStream.close() }
-                }
-                // Native Git releases prepared ref locks on abort/EOF. Kill only if it cannot exit.
-                runCatching { process.waitFor(2, TimeUnit.SECONDS) }
-            }
-            if (process.isAlive) stop(process)
-        }
-        val reader = worker {
-            if (preparedCheck == null) process.inputStream.use { it.copyTo(out) }
-            else try { process.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> out.write((line + "\n").toByteArray()); replies.put(line) } } }
-            finally { replies.offer("EOF") }
-        }
+        fun stopSafely() { if (process.isAlive) stop(process) }
+        val reader = worker { process.inputStream.use { it.copyTo(out) } }
         val errors = worker { process.errorStream.use { it.copyTo(err) } }
-        val writer = worker { process.outputStream.use { stream ->
-            if (input != null) { stream.write(input); stream.flush() }
-            if (preparedCheck != null) {
-                while (true) {
-                    val reply = replies.poll(timeoutSeconds, TimeUnit.SECONDS) ?: error("Git reference prepare timed out")
-                    if (reply == "EOF") error("Git reference transaction ended before prepare")
-                    if (reply == "prepare: ok") break
-                }
-                try {
-                    preparedCheck()
-                    synchronized(decision) { if (!cancelled.get()) { stream.write("commit\n".toByteArray()); stream.flush() } }
-                } catch (e: Throwable) {
-                    synchronized(decision) { if (!cancelled.getAndSet(true)) { stream.write("abort\n".toByteArray()); stream.flush() } }
-                    throw e
-                }
-            }
-        } }
+        val writer = worker { process.outputStream.use { stream -> if (input != null) { stream.write(input); stream.flush() } } }
         var uncertain = false
         var interrupted = false
         try {

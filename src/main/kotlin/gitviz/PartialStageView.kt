@@ -33,12 +33,17 @@ internal fun PartialStageView(cli: GitCli, file: WorkingFile, staged: Boolean, r
                 Text(document.unavailable ?: t("Click a hunk header or +/− lines to select", "点击 hunk 标题或 +/− 行进行选择"), fontSize = TypeScale.Small, color = Palette.Muted, modifier = Modifier.weight(1f))
                 if (document.unavailable == null) {
                     TextButton(enabled = !busy, onClick = { selected = if (selected == document.changes) emptySet() else document.changes }) { Text(t("All / clear", "全选／清除")) }
-                    TextButton(enabled = !busy && selected.isNotEmpty(), onClick = { onApply(document, selected) }) {
+                    if (selected.isNotEmpty()) TextButton(enabled = !busy, onClick = { onApply(document, selected) }) {
                         Text(if (staged) t("Unstage ${selected.size} lines", "取消暂存 ${selected.size} 行") else t("Stage ${selected.size} lines", "暂存 ${selected.size} 行"))
                     }
                 }
             }
-            DiffBody(document.lines, mode, Modifier.fillMaxWidth().weight(1f), selection, document.sources)
+            // Files that cannot be staged by line (large, binary, non-UTF-8) still show Git's own diff, read only.
+            val plain by produceState<List<DiffLine>?>(null, document.signature) {
+                value = if (document.lines.isNotEmpty()) null
+                    else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { parseDiffLines(cli.diff(file, staged)) }.getOrNull() }
+            }
+            DiffBody(plain ?: document.lines, mode, Modifier.fillMaxWidth().weight(1f), selection, document.sources)
         }
     }
 }

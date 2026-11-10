@@ -26,7 +26,6 @@ internal object FeatureVisibility {
 internal class CommandRegistry(commands: List<AppCommand>) {
     val commands = commands.filter { FeatureVisibility.visible(it.id) }
     fun execute(id: String): Boolean { val c = commands.firstOrNull { it.id == id } ?: return false; if (c.enabled) c.action(); return true }
-    fun menu(): List<MenuEntry> = commands.map { c -> MenuItem(c.title, c.enabled, detail = c.hint.ifBlank { null }) { execute(c.id) } }
 }
 internal class CommitDraft { var message by mutableStateOf(""); var amend by mutableStateOf(false) }
 internal class TextFocus { val active = mutableStateMapOf<Any, Boolean>(); val editing get() = active.values.any { it } }

@@ -94,7 +94,7 @@ class LayerThreeUiTest {
                 try { scene.render(0); save(scene, "insights-$theme") } finally { scene.close() }
                 val lessons = Teaching.capture(true) {
                     Teaching.command(listOf("add", "--", ":(literal)src/main.kt"))
-                    Teaching.command(listOf("apply", "--cached", "--check", "--whitespace=nowarn", "-"), input = true, temporaryIndex = true)
+                    Teaching.command(listOf("apply", "--cached", "--check", "--whitespace=nowarn", "-"), input = true)
                     GitResult(null, "")
                 }
                 val status = describeAction("正在暂存", "已暂存", lessons)

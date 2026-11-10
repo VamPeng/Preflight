@@ -78,14 +78,18 @@ internal fun ChangesView(
     Row(modifier) {
         Column(Modifier.width(340.dp).fillMaxHeight()) {
             ScrollList(Modifier.fillMaxWidth().weight(1f)) {
-                item { GroupHeader(t("Unstaged", "未暂存"), unstaged.size, divider = false) }
+                item { GroupHeader(t("Unstaged", "未暂存"), unstaged.size, divider = false) {
+                    if (unstaged.isNotEmpty()) RowAction(t("Stage all", "全部暂存"), Palette.Link, !busy) { apply(t("Staging", "正在暂存"), t("Staged ${countOf(unstaged.size, "file")}", "已暂存 ${unstaged.size} 个文件"), op = { stageAll() }) }
+                } }
                 items(unstaged, key = { "u:" + it.path }) { f ->
                     ChangeRow(f, f.worktree, current == Selection(f.path, false), { selection = Selection(f.path, false) }) {
                         RowAction(t("Discard", "丢弃"), Palette.Removed, !busy) { toDiscard = f }
                         RowAction(t("Stage", "暂存"), Palette.Link, !busy) { apply(t("Staging", "正在暂存"), t("Staged ${f.path}", "已暂存 ${f.path}"), op = { stage(f) }) }
                     }
                 }
-                item { GroupHeader(t("Staged", "已暂存"), staged.size) }
+                item { GroupHeader(t("Staged", "已暂存"), staged.size) {
+                    if (staged.isNotEmpty()) RowAction(t("Unstage all", "全部取消暂存"), Palette.Link, !busy) { apply(t("Unstaging", "正在取消暂存"), t("Unstaged ${countOf(staged.size, "file")}", "已取消暂存 ${staged.size} 个文件"), op = { unstageAll() }) }
+                } }
                 items(staged, key = { "s:" + it.path }) { f ->
                     ChangeRow(f, f.index, current == Selection(f.path, true), { selection = Selection(f.path, true) }) {
                         RowAction(t("Unstage", "取消暂存"), Palette.Link, !busy) { apply(t("Unstaging", "正在取消暂存"), t("Unstaged ${f.path}", "已取消暂存 ${f.path}"), op = { unstage(f) }) }
@@ -143,11 +147,12 @@ internal fun ChangesView(
 }
 
 @Composable
-private fun GroupHeader(title: String, count: Int, divider: Boolean = true) {
+private fun GroupHeader(title: String, count: Int, divider: Boolean = true, actions: @Composable RowScope.() -> Unit = {}) {
     // 分隔线画在标题上方，把上一组和这一组隔开；第一组上面已经有工具栏的分隔线
     if (divider) HorizontalDivider()
-    Row(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("$title · $count", fontSize = TypeScale.Small, color = Palette.Muted)
+    Row(Modifier.fillMaxWidth().height(28.dp).padding(start = 14.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("$title · $count", fontSize = TypeScale.Small, color = Palette.Muted, modifier = Modifier.weight(1f))
+        actions()
     }
 }
 

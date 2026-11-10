@@ -71,11 +71,8 @@ input::placeholder{color:var(--faint)}
       </sc-for>
     </div>
 
-    <!-- 侧栏底部：外观和设置 -->
+    <!-- 侧栏底部：设置（主题在设置页里切换） -->
     <div style="flex:none;display:flex;align-items:center;gap:4px;padding:6px 8px;border-top:1px solid var(--line)">
-      <button class="hv" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" title="{{themeLabel}}" style="width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{themeIcon}}"/></svg>
-      </button>
       <a href="Settings.dc.html" class="hv" aria-label="设置" title="设置" style="width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10 M18 7h2 M4 17h2 M10 17h10 M16 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8 20a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
       </a>
@@ -463,6 +460,11 @@ input::placeholder{color:var(--faint)}
       <label for="dlg-remember" style="display:{{dlg.rememberDisplay}};align-items:center;gap:6px;margin-top:12px;font-size:12px;color:var(--muted);cursor:pointer">
         <input id="dlg-remember" type="checkbox" checked="{{remember}}" onChange="{{toggleRemember}}" style="margin:0;accent-color:var(--accent)">{{dlg.remember}}
       </label>
+      <div style="display:{{dlg.factsDisplay}};flex-direction:column;gap:4px;margin-top:12px;padding:10px 12px;border-radius:6px;background:var(--rail);font-size:12px">
+        <sc-for list="{{dlg.facts}}" as="f" hint-placeholder-count="2">
+          <div style="display:flex;gap:8px;color:{{f.fg}}"><span style="flex:none;width:6px;height:6px;margin-top:6px;border-radius:50%;background:{{f.fg}}"></span><span style="min-width:0;word-break:break-all">{{f.text}}</span></div>
+        </sc-for>
+      </div>
       <div style="display:{{dlg.modesDisplay}};flex-direction:column;gap:6px;margin-top:14px">
         <sc-for list="{{resetModes}}" as="r" hint-placeholder-count="3">
           <button onClick="{{r.pick}}" aria-pressed="{{r.on}}" style="display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:6px;border:1px solid {{r.bd}};background:{{r.bg}}">
@@ -473,7 +475,7 @@ input::placeholder{color:var(--faint)}
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
         <button class="tool" onClick="{{closeModal}}" style="height:30px;padding:0 14px;border:1px solid var(--line);border-radius:5px">取消</button>
-        <button onClick="{{confirm}}" style="height:30px;padding:0 14px;border-radius:5px;background:var(--accent);color:var(--on-accent);font-weight:600;opacity:{{okOpacity}}">{{dlg.ok}}</button>
+        <button onClick="{{confirm}}" style="height:30px;padding:0 14px;border-radius:5px;background:{{dlg.okBg}};color:{{dlg.okFg}};font-weight:600;opacity:{{okOpacity}}">{{dlg.ok}}</button>
       </div>
     </div>
   </div>
@@ -628,13 +630,6 @@ class Component extends DCLogic {
       ['branch', '本地分支', 'M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9', branchRows.filter((i) => !i.chev).length, branchRows],
       ['remote', '远程', 'M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z', 1, [folder('origin', 0), leaf('main', 1, '39a636e', {})]],
       ['tag', '标签', 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z M7 7h.01', 1 + s.extraTags.length, [leaf('v0.1.0', 0, '6bd1a8b', {}), ...s.extraTags.map((t) => leaf(t.name, 0, t.id, {}))]],
-      ['stash', '储藏', 'M21 8v13H3V8 M1 3h22v5H1z M10 12h4', s.stashes.length, s.stashes.map((st, i) => {
-        const on = s.view === 'stash' && s.stashIdx === i;
-        return Object.assign(leaf(st.msg, 0, null, {}), {
-          bg: on ? RAISED : 'transparent', bar: on ? 'inset 2px 0 0 ' + SIGNAL : 'none',
-          pick: () => set({ view: 'stash', stashIdx: i, stashFile: 0 }),
-        });
-      })],
     ];
     const sections = secDef.map((d) => {
       const f = q;
@@ -647,13 +642,17 @@ class Component extends DCLogic {
       };
     });
     const wsBase = [
-      { label: '本地改动', icon: 'M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z', badge: '3', badgeDisplay: 'block', bg: 'transparent', fg: INK, stroke: 'var(--muted)', weight: 400 },
-      { label: '所有提交', icon: 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l4 2', badge: '', badgeDisplay: 'none', bg: RAISED, fg: INK, stroke: SIGNAL, weight: 600 },
+      { view: 'changes', label: '本地改动', icon: 'M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z', badge: '3', badgeDisplay: 'block', bg: 'transparent', fg: INK, stroke: 'var(--muted)', weight: 400 },
+      { view: 'history', label: '所有提交', icon: 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l4 2', badge: '', badgeDisplay: 'none', bg: RAISED, fg: INK, stroke: SIGNAL, weight: 600 },
+      // 储藏只从这里和工具栏进入；引用树里不再单列储藏分区
+      { view: 'stash', label: '储藏', icon: 'M21 8v13H3V8 M1 3h22v5H1z M10 12h4', badge: '', badgeDisplay: 'none', bg: 'transparent', fg: INK, stroke: 'var(--muted)', weight: 400 },
     ];
     const rem = 4 + s.restored.length - Object.keys(s.done).length;
-    const workspace = wsBase.map((w, i) => {
-      const on = s.view === (i === 1 ? 'history' : 'changes');
-      return Object.assign({}, w, { badge: i === 0 ? String(rem) : '', badgeDisplay: i === 0 && rem > 0 ? 'block' : 'none', bg: on ? RAISED : 'transparent', stroke: on ? 'var(--accent-ink)' : 'var(--muted)', weight: on ? 600 : 400, pick: () => set({ view: i === 1 ? 'history' : 'changes' }) });
+    const workspace = wsBase.map((w) => {
+      const on = s.view === w.view;
+      const badge = w.view === 'changes' ? rem : w.view === 'stash' ? s.stashes.length : 0;
+      return Object.assign({}, w, { badge: badge ? String(badge) : '', badgeDisplay: badge > 0 ? 'block' : 'none', bg: on ? RAISED : 'transparent', stroke: on ? 'var(--accent-ink)' : 'var(--muted)', weight: on ? 600 : 400,
+        pick: () => set(w.view === 'stash' ? { view: 'stash', stashIdx: 0, stashFile: 0 } : { view: w.view }) });
     });
     const tools = [
       { label: '刷新', icon: 'M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5', opacity: 1, off: false },
@@ -810,14 +809,25 @@ class Component extends DCLogic {
       setTimeout(() => this.setState({ toast: '' }), 2200);
     };
     const sh = cur.short;
+    const fact = (fg) => (text) => ({ text, fg });
+    const note = fact('var(--muted)'), ok = fact('var(--add)'), warn = fact('var(--warn)'), bad = fact('var(--del)');
     const DLG = {
       checkout: { title: '检出提交', desc: '工作区会切换到 ' + sh + '，进入分离 HEAD 状态。', input: false, ok: '检出' },
       branch: { title: '新建分支', desc: '从 ' + sh + ' 创建分支。', input: true, label: '分支名', ph: 'feature/my-branch', ok: '创建分支' },
       tag: { title: '打标签', desc: '给 ' + sh + ' 打一个标签。', input: true, label: '标签名', ph: 'v0.2.0', ok: '创建标签' },
-      cherry: { title: 'Cherry-pick', desc: '把 ' + sh + ' 的改动应用到 ' + s.current + ' 上。', input: false, ok: '应用' },
+      cherry: { title: 'Cherry-pick', desc: '把 ' + sh + ' 的改动应用到 ' + s.current + ' 上。', input: false, ok: '应用', facts: [ok('预计没有冲突')] },
+      // 操作前的后果摘要：只读计算，不演练、不复制工作区；确认后直接执行
+      merge: s.target
+        ? { title: '合并到 ' + s.current, desc: '把 ' + nameOf(s.target) + ' 合并进 ' + s.current + '。', input: false, ok: '合并',
+          facts: [note('带入 3 个提交，会生成一个合并提交'), warn('预计冲突：1 个文件 · src/main/kotlin/gitviz/Theme.kt'), note('冲突时会停下，到「解决冲突」里处理或放弃')] }
+        : { title: '合并到 ' + s.current, desc: '把 ' + sh + ' 合并进 ' + s.current + '。', input: false, ok: '合并',
+          facts: [note('带入 2 个提交，可以快进，不会生成合并提交'), ok('预计没有冲突')] },
+      rebase: { title: '变基 ' + s.current, desc: '把 ' + s.current + ' 的提交接到 ' + (s.target ? nameOf(s.target) : sh) + ' 后面。', input: false, ok: '变基',
+        facts: [note('重放 4 个提交，它们的哈希会改变'), note('不预判冲突；遇到冲突会暂停，可以继续、跳过或放弃')] },
       revert: { title: '回滚提交', desc: '在 ' + s.current + ' 上新增一个提交，撤销 ' + sh + ' 的改动。', input: false, ok: '回滚' },
       stash: { title: '储藏改动', desc: '把工作区的 ' + rem + ' 个改动收起来，之后可以再恢复。', input: true, optional: true, label: '说明（可选）', ph: 'WIP on ' + s.current, ok: '储藏' },
-      reset: { title: '重置 ' + s.current, desc: '把 ' + s.current + ' 移到 ' + sh + '。', input: false, modes: true, ok: '重置' },
+      reset: { title: '重置 ' + s.current, desc: '把 ' + s.current + ' 移到 ' + sh + '。', input: false, modes: true, ok: '重置', danger: s.resetMode === 'hard',
+        facts: [note('3 个提交会离开 ' + s.current + '，之后只能从 reflog 找回')].concat(s.resetMode === 'hard' ? [bad('工作区有 ' + rem + ' 个文件的未提交改动会被丢弃，无法恢复')] : []) },
       ssh: { title: '解锁 SSH 密钥', desc: '连接 origin 需要 ~/.ssh/id_ed25519 的密码。', input: true, secret: true, label: '密钥密码', ok: '解锁', remember: '记住到钥匙串' },
       https: { title: '登录 github.com', desc: '这个仓库通过 HTTPS 连接。GitHub 不接受账号密码，要用个人访问令牌。', input: true, secret: true, user: true, label: '个人访问令牌', ok: '登录', remember: '保存到钥匙串' },
       hostKey: { title: '确认服务器身份', desc: '第一次连接 github.com。确认下面的指纹和官方公布的一致，再继续。', input: false, code: 'ED25519\nSHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU', ok: '信任并继续' },
@@ -829,7 +839,9 @@ class Component extends DCLogic {
       dropStash: { title: '删除储藏', desc: '「' + stCur.msg + '」会被永久删除，无法恢复。', input: false, ok: '删除' },
     };
     const base = DLG[s.modal] || DLG.checkout;
-    const dlg = Object.assign({ label: '', ph: '', code: '', remember: '' }, base, {
+    const dlg = Object.assign({ label: '', ph: '', code: '', remember: '', facts: [] }, base, {
+      factsDisplay: base.facts && base.facts.length ? 'flex' : 'none',
+      okBg: base.danger ? 'var(--del)' : 'var(--accent)', okFg: base.danger ? '#FFFFFF' : 'var(--on-accent)',
       inputDisplay: base.input ? 'flex' : 'none', modesDisplay: base.modes ? 'flex' : 'none',
       fieldType: base.secret ? 'password' : 'text', userDisplay: base.user ? 'flex' : 'none',
       codeDisplay: base.code ? 'block' : 'none', rememberDisplay: base.remember ? 'flex' : 'none',
@@ -849,7 +861,7 @@ class Component extends DCLogic {
       const done = () => flash(msg, { ctx: null });
       try { navigator.clipboard.writeText(text).then(done, done); } catch (e) { done(); }
     };
-    const open = (modal) => () => set({ ctx: null, modal, field: '' });
+    const open = (modal) => () => set({ ctx: null, modal, field: '', target: '' });
     const isHead = s.sel === headId;
     const item = (label, run, opt) => {
       const off = !!(opt && opt.off);
@@ -866,8 +878,8 @@ class Component extends DCLogic {
       item('新建分支…', open('branch')),
       item('打标签…', open('tag')),
       sep,
-      isHead ? item(mergeTo, () => {}, { off: true })
-        : Object.assign(item(mergeTo, () => {}), { btnDisplay: 'none', linkDisplay: 'flex' }),
+      item(mergeTo, open('merge'), { off: isHead }),
+      item('变基到这个提交…', open('rebase'), { off: isHead }),
       item('Cherry-pick 到 ' + s.current, open('cherry'), { off: isHead }),
       item('回滚这个提交', open('revert')),
       item('把 ' + s.current + ' 重置到这里…', open('reset'), { off: isHead, danger: true }),
@@ -880,8 +892,8 @@ class Component extends DCLogic {
     const openBranch = (modal, field) => () => set({ ctx: null, modal, field, target: menuBranch });
     const branchItems = [
       item('切换到这个分支', () => flash('已切换到 ' + nameOf(menuBranch), { ctx: null, current: menuBranch, sel: tips[menuBranch], fileIdx: 0 }), { off: onCurrent }),
-      onCurrent ? item(mergeTo, () => {}, { off: true })
-        : Object.assign(item(mergeTo, () => {}), { btnDisplay: 'none', linkDisplay: 'flex' }),
+      item(mergeTo, openBranch('merge', ''), { off: onCurrent }),
+      item('将当前分支变基到这里…', openBranch('rebase', ''), { off: onCurrent }),
       sep,
       item('重命名…', openBranch('renameBranch', nameOf(menuBranch || '')), { off: onCurrent }),
       item('删除…', openBranch('deleteBranch', ''), { off: onCurrent, danger: true }),
@@ -989,6 +1001,16 @@ class Component extends DCLogic {
           files: live.map((c) => ({ t: c.t === '?' ? 'A' : c.t, name: c.name, dir: c.dir, add: c.add || 6, del: c.del || (c.t === 'M' ? 2 : 0) })),
         };
         flash('已储藏 ' + live.length + ' 个文件', { modal: null, stashes: [entry].concat(s.stashes), staged: {}, done, view: 'stash', stashIdx: 0, stashFile: 0 });
+        return;
+      }
+      if (s.modal === 'merge') {
+        // 预计有冲突的合并：执行后直接进入解决冲突页
+        if (s.target) { location.href = 'Conflict.dc.html'; return; }
+        flash('已合并 ' + sh + '（快进）', { modal: null });
+        return;
+      }
+      if (s.modal === 'rebase') {
+        flash('已变基 ' + s.current + '：重放了 4 个提交', { modal: null });
         return;
       }
       if (s.modal === 'reset') {

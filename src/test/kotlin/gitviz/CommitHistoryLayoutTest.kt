@@ -34,9 +34,9 @@ class CommitHistoryLayoutTest {
         val scene = ImageComposeScene(800, 700, Density(1f)) {
             GitVizTheme {
                 CommitHistoryLayout(selected != null, Modifier.fillMaxSize(),
-                    list = { padding ->
+                    list = { insets ->
                         LazyColumn(Modifier.fillMaxSize().onGloballyPositioned { listBounds = it.boundsInRoot() },
-                            state = listState, contentPadding = PaddingValues(bottom = padding)) {
+                            state = listState, contentPadding = PaddingValues(bottom = insets.bottom)) {
                             items((0 until 30).toList()) { index ->
                                 Text("Commit $index", modifier = Modifier.fillMaxWidth().height(30.dp)
                                     .onGloballyPositioned { if (index == 29) lastBounds = it.boundsInRoot() }

@@ -10,7 +10,6 @@ class CommandsTest {
         val registry = CommandRegistry((hidden + "refresh").map { AppCommand(it, it, true) { calls++ } })
         hidden.forEach { assertFalse(registry.execute(it)) }
         assertEquals(listOf("refresh"), registry.commands.map { it.id })
-        assertEquals(1, registry.menu().size)
         assertEquals(0, calls)
         assertTrue(registry.execute("refresh")); assertEquals(1, calls)
     }
@@ -23,13 +22,13 @@ class CommandsTest {
         assertNull(shortcutCommand(Key.Escape, false, false, false))
         assertNull(shortcutCommand(Key.J, false, false, false))
     }
-    @Test fun `menu and palette dispatch same command availability`() {
+    @Test fun `disabled commands do not run`() {
         var calls = 0
         val enabled = CommandRegistry(listOf(AppCommand("run", "Run", true) { calls++ }))
-        enabled.execute("run"); (enabled.menu().single() as MenuItem).action()
-        assertEquals(2, calls)
+        assertTrue(enabled.execute("run"))
+        assertEquals(1, calls)
         val disabled = CommandRegistry(listOf(AppCommand("run", "Run", false) { calls++ }))
-        disabled.execute("run"); (disabled.menu().single() as MenuItem).action()
-        assertEquals(2, calls)
+        assertTrue(disabled.execute("run"))
+        assertEquals(1, calls)
     }
 }

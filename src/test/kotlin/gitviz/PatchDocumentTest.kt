@@ -82,15 +82,29 @@ class PatchDocumentTest {
         assertTrue(r.cli.applySelection(next, next.changes).ok)
         assertEquals("", r.git("ls-files"))
     }
-    @Test fun `stale index or concurrent modification never overwrites other staged changes`() = RepositoryFixture().use { r ->
+    @Test fun `stale selection is refused and other staged changes are kept`() = RepositoryFixture().use { r ->
         r.commit(); r.write("a", "modified\n")
         val doc = r.cli.patchDocument(r.cli.status().single(), false)
-        r.write("other", "other\n")
-        val result = r.cli.applySelection(doc, doc.changes) { r.git("add", "other") }
-        assertFalse(result.ok)
+        r.write("other", "other\n"); r.git("add", "other")
+        val unrelated = r.cli.applySelection(doc, doc.changes)
+        assertTrue(unrelated.ok, unrelated.output)
         assertEquals("other", r.git("show", ":other"))
+        assertEquals("modified", r.git("show", ":a"))
+        r.write("a", "modified\nagain\n")
+        val next = r.cli.patchDocument(r.cli.status().first { it.path == "a" }, false)
+        r.write("a", "modified\nchanged after loading\n")
+        assertFalse(r.cli.applySelection(next, next.changes).ok)
+        assertEquals("modified", r.git("show", ":a"))
+        assertEquals("other", r.git("show", ":other"))
+    }
+    @Test fun `an index locked by another process fails without removing its lock`() = RepositoryFixture().use { r ->
+        r.commit(); r.write("a", "modified\n")
+        val doc = r.cli.patchDocument(r.cli.status().single(), false)
+        val lock = r.cli.ownDirectory.resolve("index.lock").also { it.writeText("") }
+        assertFalse(r.cli.applySelection(doc, doc.changes).ok)
+        assertTrue(lock.exists())
         assertEquals("first", r.git("show", ":a"))
-        assertFalse(r.cli.ownDirectory.resolve("index.lock").exists())
+        lock.delete()
     }
     @Test fun `non UTF8 old side and large files refuse partial edits`() = RepositoryFixture().use { r ->
         r.root.resolve("a").writeBytes(byteArrayOf(0xe9.toByte(), 10)); r.git("add", "a"); r.git("commit", "-qm", "legacy")

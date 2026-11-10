@@ -37,7 +37,6 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -109,7 +108,7 @@ internal fun CommitList(
     onFooter: (() -> Unit)? = null,
     /** 侧边栏正指着的分支所在的线（Track.line），图上只亮这一条。 */
     sidebarHighlight: Int? = null,
-    bottomPadding: Dp = 0.dp,
+    historyInsets: CommitHistoryInsets? = null,
     focusRequester: FocusRequester? = null,
 ) {
     // 优先级：鼠标在图上指着的线 > 侧边栏指着的分支 > 选中提交所在的线
@@ -149,8 +148,9 @@ internal fun CommitList(
             ColumnHeader(lanesShown)
             HorizontalDivider()
             Box(Modifier.fillMaxWidth().weight(1f)) {
-                LazyColumn(Modifier.fillMaxSize().padding(end = 10.dp), state = listState,
-                    contentPadding = PaddingValues(bottom = bottomPadding)) {
+                val scrollbarWidth = if (historyInsets != null) CommitHistoryScrollbarWidth else 10.dp
+                LazyColumn(Modifier.fillMaxSize().padding(end = scrollbarWidth), state = listState,
+                    contentPadding = PaddingValues(bottom = historyInsets?.bottom ?: 0.dp)) {
                     items(shown, key = { state.result.commits[it].id }) { index ->
                         val c = state.result.commits[index]
                         CommitRow(
@@ -167,7 +167,9 @@ internal fun CommitList(
                         )
                     }
                 }
-                VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+                val scrollbar = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
+                if (historyInsets == null) VerticalScrollbar(rememberScrollbarAdapter(listState), scrollbar)
+                else if (historyInsets.scrollbarVisible) CommitHistoryScrollbar(listState, scrollbar)
             }
         }
     }

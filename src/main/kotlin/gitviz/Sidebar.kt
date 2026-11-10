@@ -51,9 +51,6 @@ fun RefSidebar(
     modifier: Modifier,
     onBranchOpen: (RefTarget) -> Unit = {},
     onBranchMenu: (RefTarget) -> Unit = {},
-    stashes: List<StashEntry> = emptyList(),
-    onStash: (StashEntry) -> Unit = {},
-    onStashOpen: (StashEntry) -> Unit = {},
     /** 分支的颜色，和分支图同源。 */
     branchColors: BranchColors = BranchColors.None,
     /** 鼠标移到某个引用上、移开（null）时通知，图上据此高亮那条分支。 */
@@ -113,22 +110,11 @@ fun RefSidebar(
                             RefLeafRow(
                                     row, ref, ref.commitId == selectedId, branchColors.index(ref.label),
                                     onHover = onHover, onClick = { keyboardRef = ref.label; focus.requestFocus(); onSelect(ref) },
-                                    onOpen = { if (ref.label.kind == RefKind.BRANCH) onBranchOpen(ref) },
+                                    onOpen = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchOpen(ref) },
                                     onMenu = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchMenu(ref) },
                                 )
                         }
                     }
-                }
-            }
-            val shownStashes = if (filtering) stashes.filter { it.message.contains(filter.trim(), ignoreCase = true) } else stashes
-            val stashKey = "${RefKind.STASH}:"
-            val stashExpanded = filtering || stashKey !in collapsed
-            item(key = stashKey) {
-                SectionHeader(t("Stashes", "储藏"), shownStashes.size, stashExpanded, onClick = { toggle(stashKey) })
-            }
-            if (stashExpanded) {
-                items(shownStashes, key = { stashKey + it.id }) { entry ->
-                    StashLeafRow(entry, entry.id == selectedId, onClick = { onStash(entry) }, onOpen = { onStashOpen(entry) })
                 }
             }
         }
@@ -208,25 +194,6 @@ private fun RefLeafRow(
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
             color = if (current) Palette.AccentInk else colors.onSurface,
         )
-    }
-}
-
-/** 储藏：单击在图上找到它，双击打开储藏页。 */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun StashLeafRow(entry: StashEntry, selected: Boolean, onClick: () -> Unit, onOpen: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(25.dp)
-            .rowHighlight(selected)
-            .combinedClickable(onClick = onClick, onDoubleClick = onOpen)
-            .indented(0),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Spacer(Modifier.width(8.dp))
-        Text(entry.message.ifBlank { entry.ref }, fontSize = TypeScale.Body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f, fill = false))
-        Text(entry.ref.removePrefix("stash"), fontSize = TypeScale.Caption, color = Palette.Faint, maxLines = 1)
     }
 }
 

@@ -35,14 +35,12 @@ class TeachingTest {
         assertFalse("Bearer abc" in formatGitCommand(listOf("-c", "http.extraheader=Authorization: Bearer abc", "fetch")))
     }
 
-    @Test fun `partial staging explains stdin and temporary index`() = RepositoryFixture().use { r ->
+    @Test fun `partial staging explains the patch on stdin`() = RepositoryFixture().use { r ->
         r.commit(); r.write("a", "changed\n")
         val doc = r.cli.patchDocument(r.cli.status().single(), false)
         val result = Teaching.capture(true) { r.cli.applySelection(doc, doc.changes) }
         assertTrue(result.ok, result.output)
-        assertEquals(2, result.lessons.size)
-        assertTrue(result.lessons.all { it.command!!.startsWith("git apply --cached") })
-        assertTrue(result.lessons.all { "temporary index" in it.explanation || "临时暂存区" in it.explanation })
+        assertTrue(result.lessons.single().command!!.startsWith("git apply --cached"))
         assertTrue(result.lessons.all { "stdin" in it.explanation || "标准输入" in it.explanation })
     }
 

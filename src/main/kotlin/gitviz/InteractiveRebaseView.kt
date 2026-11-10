@@ -67,7 +67,7 @@ import kotlinx.coroutines.*
                         TextButton(enabled = !busy && error == null && base.trim() == requested.first, onClick = {
                             val reviewed = checkNotNull(plan)
                             onPreview(OperationIntent(PreviewKind.REBASE, reviewed.base, expectedHead = reviewed.head, interactive = reviewed))
-                        }) { Text(t("Preview edited history", "预览编辑后的历史")) }
+                        }) { Text(t("Apply edits", "执行编辑")) }
                     }
                 }
             }

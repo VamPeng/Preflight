@@ -22,7 +22,7 @@ internal fun GitCli.pullOptions(): PullOptions {
     return PullOptions(strategy, remotes + listOfNotNull(remote?.takeIf { it == "." }), current, remote, branch, branches, headIdentity().also { check(it.startsWith("ref: refs/heads/$current|")) { "Current branch changed" } })
 }
 
-/** Fetch is a durable first step. Integration is a separate frozen preview; canceling it keeps fetched refs. */
+/** Fetches the chosen branch and returns the integration to run on the fetched commit. A failed integration keeps the fetched refs. */
 internal fun GitCli.preparePull(settings: PullSettings): PreparedPull {
     var intent: OperationIntent? = null
     val result = coordinator.execute(OperationRequest(OperationKind.FETCH, listOf("fetch", settings.remote), network = true)) {
@@ -50,9 +50,25 @@ internal fun GitCli.preparePull(settings: PullSettings): PreparedPull {
             raw(listOf("config", "--local", "branch.$current.merge", "refs/heads/${settings.branch}"), teach = true).requireSuccess()
         }
         intent = OperationIntent(if (settings.strategy == PullStrategy.REBASE) PreviewKind.REBASE else PreviewKind.MERGE, oid, ffOnly = settings.strategy == PullStrategy.FF_ONLY, expectedHead = sourceHead)
-        fetched.copy(output = fetched.output + "\n" + t("Fetch completed. Integration has not run; review its preview next.", "获取已完成，尚未集成；请查看下一步预览。"))
+        fetched
     }
     return PreparedPull(result, intent.takeIf { result.ok })
+}
+
+/** Pull in one step: fetch the chosen branch, then merge, rebase or fast-forward onto exactly what was fetched. */
+internal fun GitCli.pull(settings: PullSettings): GitResult = coordinator.execute(OperationRequest(OperationKind.PULL, listOf("pull", settings.remote, settings.branch), network = true)) {
+    val prepared = preparePull(settings)
+    val intent = prepared.intent ?: return@execute prepared.result
+    val plan = planOperation(intent)
+    if (plan.commits == 0 && intent.kind == PreviewKind.MERGE) return@execute GitResult(null, t("Already up to date.", "已是最新。"))
+    val integrated = executePlan(plan)
+    integrated.copy(output = listOf(prepared.result.output, integrated.output).filter { it.isNotBlank() }.joinToString("\n"))
+}
+
+/** Saved pull choice for the current branch, or null when it has no upstream yet and the user must choose one. */
+internal fun GitCli.savedPull(): PullSettings? {
+    val options = pullOptions()
+    return PullSettings(options.strategy, options.upstreamRemote ?: return null, options.upstreamBranch ?: return null, false, options.head, options.current)
 }
 
 internal fun GitCli.headIdentity(): String = ownDirectory.resolve("HEAD").readText().trim() + "|" + read("rev-parse", "HEAD").trim()

@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.sp
 /** 24×24 画布上的线条图标路径。 */
 object Icons {
     const val Refresh = "M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5"
+    const val Fetch = "M7 6l5 5 5-5 M7 13l5 5 5-5"
+    const val Chart = "M18 20V10 M12 20V4 M6 20v-6"
     const val Pull = "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3"
     const val Push = "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12"
     const val Branch = "M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9"
@@ -89,13 +91,14 @@ fun Icon(path: String, color: Color, modifier: Modifier = Modifier, size: Dp = 1
 
 /** 工具栏按钮：上图标下文字。 */
 @Composable
-fun ToolButton(label: String, icon: String, enabled: Boolean, onClick: () -> Unit) {
+fun ToolButton(label: String, icon: String, enabled: Boolean, onClick: () -> Unit, onMenu: (() -> Unit)? = null) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     Column(
         Modifier.widthIn(min = 54.dp).height(42.dp).alpha(if (enabled) 1f else 0.4f).clip(RoundedCornerShape(6.dp))
             .background(if (hovered && enabled) Palette.Raised else Color.Transparent)
             .hoverable(interaction, enabled)
+            .then(if (onMenu != null && enabled) Modifier.onRightClick(onMenu) else Modifier)
             .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

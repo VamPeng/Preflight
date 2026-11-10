@@ -19,12 +19,34 @@ class PullTest {
         assertTrue(local.cli.executePlan(plan).ok)
         assertEquals(tip, local.git("rev-parse", "HEAD"))
     }
+    @Test fun `one step pull fast-forwards with the saved choice and reports up to date`() = withRemote { remote, local ->
+        assertNull(local.cli.savedPull())
+        val tip = remote.commit("new", "new\n")
+        val first = local.cli.pull(PullSettings(PullStrategy.MERGE, "origin", "main", true))
+        assertTrue(first.ok, first.output)
+        assertEquals(tip, local.git("rev-parse", "HEAD"))
+        val saved = assertNotNull(local.cli.savedPull())
+        assertEquals(listOf("origin", "main"), listOf(saved.remote, saved.branch))
+        val next = remote.commit("more", "more\n")
+        assertTrue(local.cli.pull(saved).ok)
+        assertEquals(next, local.git("rev-parse", "HEAD"))
+        val again = local.cli.pull(assertNotNull(local.cli.savedPull()))
+        assertTrue(again.ok, again.output)
+        assertEquals(next, local.git("rev-parse", "HEAD"))
+    }
+    @Test fun `one step pull stops in conflict and keeps fetched refs`() = withRemote { remote, local ->
+        val upstream = remote.commit("a", "remote\n"); local.commit("a", "local\n")
+        val result = local.cli.pull(PullSettings(PullStrategy.MERGE, "origin", "main", true))
+        assertEquals(GitFailure.CONFLICT, result.failure, result.output)
+        assertEquals(upstream, local.git("rev-parse", "origin/main"))
+        assertEquals(GitOperation.MERGE, local.cli.currentOperation())
+    }
     @Test fun `ff only rejects divergence without fallback and choice persists`() = withRemote { remote, local ->
         remote.commit("remote", "remote\n"); val head = local.commit("local", "local\n")
         val prepared = local.cli.preparePull(PullSettings(PullStrategy.FF_ONLY, "origin", "main", true))
         assertTrue(prepared.result.ok, prepared.result.output)
         val plan = local.cli.planOperation(prepared.intent!!)
-        assertFalse(plan.outcome.ok)
+        assertTrue(plan.facts.any { it.tone == FactTone.DANGER })
         assertFalse(local.cli.executePlan(plan).ok)
         assertEquals(head, local.git("rev-parse", "HEAD"))
         assertEquals(PullStrategy.FF_ONLY, local.cli.pullOptions().strategy)

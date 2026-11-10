@@ -144,24 +144,29 @@ internal fun classifyFailure(output: String): GitFailure = when {
 class GitCli(val workTree: File, private val isolated: Boolean = false) {
     internal fun atPath(path: File): GitCli = GitCli(path, isolated)
 
-    /** 推送当前分支；没有上游时设到 origin，以后直接 git push 也能用。 */
-    fun push(): GitResult {
+    /**
+     * 推送当前分支；没有上游时设到 origin，以后直接 git push 也能用。
+     * force 用 --force-with-lease：只有远程分支还是上次获取时的样子才覆盖，别人新推的提交不会被冲掉。
+     */
+    fun push(force: Boolean = false): GitResult {
         val branch = capture("symbolic-ref", "--short", "-q", "HEAD")
             ?: return GitResult(GitFailure.OTHER, t("Not on any branch, so there's nothing to push", "现在不在任何分支上，无法推送"))
         val hasUpstream = capture("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}") != null
-        return if (hasUpstream) network("push") else network("push", "-u", "origin", branch)
+        val flags = if (force) arrayOf("--force-with-lease") else emptyArray()
+        return if (hasUpstream) network("push", *flags) else network("push", *flags, "-u", "origin", branch)
+    }
+
+    /** 检出远程分支：已有同名本地分支就切过去，没有就新建一个跟踪它的本地分支。remoteBranch 形如 origin/feature/x。 */
+    fun checkoutRemote(remoteBranch: String): GitResult {
+        val remote = read("remote").lines().filter { it.isNotBlank() && remoteBranch.startsWith("$it/") }.maxByOrNull { it.length }
+            ?: return GitResult(GitFailure.OTHER, t("Unknown remote for $remoteBranch", "找不到 $remoteBranch 所属的远程"))
+        val local = remoteBranch.removePrefix("$remote/")
+        return if (capture("rev-parse", "-q", "--verify", "refs/heads/$local") != null) run("switch", local)
+            else run("switch", "-c", local, "--track", "refs/remotes/$remoteBranch")
     }
 
     fun fetch(remote: String? = null): GitResult = if (remote == null) network("fetch") else {
         if (remote != "." && remote !in read("remote").lines()) GitResult(GitFailure.OTHER, "Unknown remote") else network("fetch", "--", remote)
-    }
-
-    fun pull(): GitResult {
-        val fetched = network("fetch")
-        if (!fetched.ok) return fetched
-        val upstream = capture("rev-parse", "--verify", "@{upstream}")
-            ?: return GitResult(GitFailure.OTHER, t("Choose an upstream branch first", "请先选择上游分支"))
-        return merge(upstream)
     }
 
     /** 把 url 克隆到当前目录下的 folder。 */
@@ -186,6 +191,13 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
     }
 
     fun stage(file: WorkingFile): GitResult = run("add", "--", literal(file.path))
+
+    /** 暂存全部改动，包括未跟踪的文件和删除。 */
+    fun stageAll(): GitResult = run("add", "--all", "--", ":/")
+
+    fun unstageAll(): GitResult =
+        if (hasCommits()) run("restore", "--staged", "--", ":/")
+        else run("rm", "--cached", "-r", "-q", "--", ":/")
 
     fun unstage(file: WorkingFile): GitResult =
         if (hasCommits()) run("restore", "--staged", "--", literal(file.path))
@@ -429,9 +441,9 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
     /** 会连接远程的命令：可能要等用户输入，超时更长，也要接上系统的密码对话框。 */
     private fun network(vararg args: String): GitResult = execute(OperationRequest.command(args.toList(), network = true))
 
-    internal fun raw(args: List<String>, input: ByteArray? = null, environment: Map<String, String> = emptyMap(), timeout: Long = TIMEOUT_SECONDS, preparedCheck: (() -> Unit)? = null, teach: Boolean = false): GitExecution {
-        if (teach) Teaching.command(args, input != null, "GIT_INDEX_FILE" in environment)
-        return GitProcess.execute(workTree, if (isolated) listOf("-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "protocol.allow=never", "-c", "core.fsmonitor=false") + args else args, input, environment, timeout, isolated, preparedCheck)
+    internal fun raw(args: List<String>, input: ByteArray? = null, environment: Map<String, String> = emptyMap(), timeout: Long = TIMEOUT_SECONDS, teach: Boolean = false): GitExecution {
+        if (teach) Teaching.command(args, input != null)
+        return GitProcess.execute(workTree, if (isolated) listOf("-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "protocol.allow=never", "-c", "core.fsmonitor=false") + args else args, input, environment, timeout, isolated)
     }
     internal fun read(vararg args: String): String = raw(args.toList()).requireSuccess().toString(Charsets.UTF_8)
     internal fun bytes(vararg args: String): ByteArray = raw(args.toList()).requireSuccess()

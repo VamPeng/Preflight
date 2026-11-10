@@ -28,12 +28,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 enum class NetOp {
-    FETCH, PULL, PUSH, ABORT;
+    FETCH, PULL, PUSH, FORCE_PUSH, ABORT;
 
     val running: String get() = when (this) {
         FETCH -> t("Fetching", "正在获取")
         PULL -> t("Pulling", "正在拉取")
         PUSH -> t("Pushing", "正在推送")
+        FORCE_PUSH -> t("Force pushing", "正在强制推送")
         ABORT -> t("Aborting", "正在放弃")
     }
 
@@ -41,6 +42,7 @@ enum class NetOp {
         FETCH -> t("Fetched", "已获取")
         PULL -> t("Pulled", "已拉取")
         PUSH -> t("Pushed", "已推送")
+        FORCE_PUSH -> t("Force pushed", "已强制推送")
         ABORT -> t("Aborted; back to where you were", "已放弃，回到操作之前")
     }
 }
@@ -65,6 +67,11 @@ data class NetStatus(
     val output: String = "",
     val id: Long = statusIds.incrementAndGet(),
     val lessons: List<GitLesson> = emptyList(),
+    /** 第二个可选的下一步，比如推送被拒绝时除了先拉取，还可以强制推送。 */
+    val alternative: NetOp? = null,
+    val alternativeLabel: String = "",
+    /** 进行中的操作可以取消（只给连接远程的操作）。 */
+    val cancellable: Boolean = false,
 )
 
 internal fun describe(op: NetOp, result: GitResult): NetStatus {
@@ -72,7 +79,9 @@ internal fun describe(op: NetOp, result: GitResult): NetStatus {
     return (when (result.failure) {
         null -> NetStatus(op.done, lastLine.ifBlank { t("Operation completed successfully.", "操作已成功完成。") }, NetState.DONE)
         GitFailure.REJECTED ->
-            NetStatus(t("Push rejected", "推送被拒绝"), t("The remote has commits you don't have. Pull first, then push.", "远程有你本地没有的新提交。先拉取，再推送。"), NetState.FAILED, NetOp.PULL, t("Pull first", "先拉取"))
+            if (op == NetOp.FORCE_PUSH) NetStatus(t("Force push refused", "强制推送被拒绝"), t("The remote branch changed since your last fetch. Fetch and review it first.", "远程分支在你上次获取之后又变了。先获取，看清楚再决定。"), NetState.FAILED, NetOp.FETCH, t("Fetch", "获取"))
+            else NetStatus(t("Push rejected", "推送被拒绝"), t("The remote has commits you don't have. Pull first, then push. If you rewrote local history (amend, rebase), force push instead.", "远程有你本地没有的新提交。先拉取，再推送；如果是你改写了本地历史（修改提交、变基），可以强制推送。"), NetState.FAILED, NetOp.PULL, t("Pull first", "先拉取"),
+                alternative = NetOp.FORCE_PUSH, alternativeLabel = t("Force push…", "强制推送…"))
         GitFailure.AUTH ->
             NetStatus(t("Authentication failed", "身份验证失败"), t("Authentication failed. Check your SSH key and ssh-agent, or your access token.", "验证失败。检查 SSH 密钥和 ssh-agent，或访问令牌。"), NetState.FAILED, op, t("Retry", "重试"))
         GitFailure.CONFLICT ->
@@ -100,7 +109,7 @@ internal fun describeAction(running: String, done: String, result: GitResult): N
 
 /** 成功提示可自动收起；悬停或阅读详情时保留，警告和错误始终等待用户处理。 */
 @Composable
-internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: () -> Unit) {
+internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var expanded by remember(status) { mutableStateOf(false) }
@@ -139,6 +148,8 @@ internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: 
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             status.next?.let { op -> BannerButton(status.nextLabel) { onAction(op) } }
+            status.alternative?.let { op -> BannerButton(status.alternativeLabel) { onAction(op) } }
+            if (running && status.cancellable && onCancel != null) BannerButton(t("Cancel", "取消"), onCancel)
             if (!running) BannerButton(t("Close", "关闭"), onDismiss)
         }
         if (!running && details.isNotBlank()) {

@@ -31,10 +31,9 @@ class ScreenshotTest {
                     Row(Modifier.fillMaxSize()) {
                         Column(Modifier.width(248.dp).fillMaxHeight().background(Palette.Rail)) {
                             Spacer(Modifier.height(TitleBarHeight))
-                            RefSidebar(result.refs, "", selected?.id, {}, Modifier.fillMaxWidth().weight(1f), stashes = stashes, branchColors = state.branchColors)
+                            RefSidebar(result.refs, "", selected?.id, {}, Modifier.fillMaxWidth().weight(1f), branchColors = state.branchColors)
                             HorizontalDivider()
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                                IconButton(if (Palette.isDark) Icons.Sun else Icons.Moon) {}
                             }
                         }
                         VerticalDivider()
@@ -42,9 +41,9 @@ class ScreenshotTest {
                             Toolbar(state, false, 18.dp, "", {}, {}, {}, netBusy = false, onPull = {}, onPush = {}, onNewBranch = {}, canStash = true, onStash = {})
                             HorizontalDivider()
                             CommitHistoryLayout(selected != null, Modifier.fillMaxWidth().weight(1f),
-                                list = { bottomPadding ->
+                                list = { historyInsets ->
                                     CommitList(state, result.commits.indices.toList(), selected, rememberLazyListState(), { selected = it },
-                                        Modifier.fillMaxSize(), bottomPadding = bottomPadding)
+                                        Modifier.fillMaxSize(), historyInsets = historyInsets)
                                 },
                                 detail = { CommitDetail(repo, selected, {}, it) },
                             )

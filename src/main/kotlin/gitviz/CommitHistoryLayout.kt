@@ -36,6 +36,8 @@ import java.awt.Cursor
 internal const val DEFAULT_DETAIL_FRACTION = 0.54f
 private val SheetBottom = 8.dp
 
+internal data class CommitHistoryInsets(val bottom: Dp, val scrollbarVisible: Boolean)
+
 /** 展开到整个主区域，收起恢复原有默认高度。 */
 internal class DetailSheetBounds(available: Dp) {
     val maximum = available.coerceAtLeast(0.dp)
@@ -49,7 +51,7 @@ internal class DetailSheetBounds(available: Dp) {
 internal fun CommitHistoryLayout(
     hasSelection: Boolean,
     modifier: Modifier = Modifier,
-    list: @Composable (bottomPadding: Dp) -> Unit,
+    list: @Composable (CommitHistoryInsets) -> Unit,
     detail: @Composable (Modifier) -> Unit,
 ) {
     BoxWithConstraints(modifier.clipToBounds()) {
@@ -68,13 +70,22 @@ internal fun CommitHistoryLayout(
         // 不以提交 ID 为 key：切换提交只替换内容，不重播进场动画。
         SideEffect { visible.targetState = hasSelection }
         val bottomPadding = if (hasSelection) maxOf(bounds.default, height) + SheetBottom + 12.dp else 0.dp
-        list(bottomPadding)
+        val coversList = hasSelection && targetHeight == bounds.maximum
+        val scrollbarSpace by animateDpAsState(
+            if (coversList) 0.dp else CommitHistoryScrollbarWidth,
+            if (dragging) snap() else tween(220),
+        )
+        list(CommitHistoryInsets(bottomPadding, !coversList && scrollbarSpace == CommitHistoryScrollbarWidth))
 
         AnimatedVisibility(
             visibleState = visible,
             enter = slideInVertically(tween(260)) { it },
             exit = slideOutVertically(tween(180)) { it },
-            modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp * inset).padding(bottom = SheetBottom * inset),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(
+                start = 12.dp * inset,
+                end = maxOf(12.dp * inset, scrollbarSpace),
+                bottom = SheetBottom * inset,
+            ),
         ) {
             val shape = RoundedCornerShape(12.dp * inset)
             Column(

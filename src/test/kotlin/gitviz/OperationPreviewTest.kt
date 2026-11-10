@@ -3,104 +3,108 @@ package gitviz
 import kotlin.test.*
 
 class OperationPreviewTest {
-    @Test fun `rebase preview reports ignored paths present only in intermediate commits`() = RepositoryFixture().use { r ->
-        r.commit(".gitignore", "scratch\n"); r.git("branch", "topic"); r.commit("main", "main\n"); r.git("switch", "topic")
-        r.write("scratch", "temporary committed file\n"); r.git("add", "-f", "scratch"); r.git("commit", "-qm", "temporary file")
-        r.git("rm", "scratch"); r.git("commit", "-qm", "remove temporary file")
-        r.write("scratch", "private ignored bytes\n")
-        val intent = OperationIntent(PreviewKind.REBASE, "main")
-        val plan = r.cli.planOperation(intent)
-        assertEquals("private ignored bytes\n", r.root.resolve("scratch").readText())
-        assertTrue("scratch" in plan.workingImpact || !plan.outcome.ok)
-    }
+    private fun temporaryPreviews() = java.io.File(System.getProperty("java.io.tmpdir")).list().orEmpty().filter { it.startsWith("gitviz-preview-") }.toSet()
 
-    @Test fun `preview is read only and frozen merge rejects stale state`() = RepositoryFixture().use { r ->
+    @Test fun `summary is read only, creates no sandbox and merge runs the confirmed commit`() = RepositoryFixture().use { r ->
         val base = r.commit(); r.git("checkout", "-b", "topic"); val tip = r.commit("new", "new\n"); r.git("switch", "main")
+        r.write("outside", "untracked stays\n")
+        val before = temporaryPreviews()
         val plan = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "topic"))
-        assertTrue(plan.verified, plan.outcome.output)
+        assertEquals(before, temporaryPreviews())
         assertEquals(base, r.git("rev-parse", "HEAD"))
         assertEquals(tip, plan.intent.target)
-        assertTrue(plan.files.any { it.path.endsWith(" · new") })
-        r.write("outside", "external\n")
-        assertFalse(r.cli.executePlan(plan).ok)
-        r.root.resolve("outside").delete()
-        val fresh = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "topic"))
-        val result = r.cli.executePlan(fresh)
+        assertEquals(1, plan.commits)
+        assertEquals(emptyList(), plan.conflicts)
+        assertTrue(plan.facts.any { it.tone == FactTone.GOOD })
+        val result = r.cli.executePlan(plan)
         assertTrue(result.ok, result.output)
         assertEquals(tip, r.git("rev-parse", "HEAD"))
+        assertEquals("untracked stays\n", r.root.resolve("outside").readText())
     }
 
-    @Test fun `reset modes reflect index and worktree independently including ignored collision`() = RepositoryFixture().use { r ->
-        r.commit(".gitignore", "ignored\n"); val base = r.commit()
-        r.git("checkout", "-b", "target"); r.commit("a", "target\n"); r.write("ignored", "tracked\n"); r.git("add", "-f", "ignored"); r.git("commit", "-qm", "ignored tracked")
-        r.git("switch", "main")
-        r.write("a", "staged\n"); r.git("add", "a"); r.write("a", "working\n"); r.write("ignored", "local ignored\n")
-        r.git("update-index", "--split-index")
+    @Test fun `diverged merge predicts conflicted files, keeps the branch name and stops in conflict`() = RepositoryFixture().use { r ->
+        r.commit(); r.git("branch", "topic"); r.commit("a", "main\n"); r.commit("b", "b\n"); r.git("switch", "topic"); r.commit("a", "topic\n"); r.git("switch", "main")
+        val conflicting = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "refs/heads/topic"))
+        assertEquals(listOf("a"), conflicting.conflicts)
+        assertTrue(conflicting.facts.any { it.tone == FactTone.WARN && "a" in it.text })
+        assertNull(r.cli.currentOperation())
+        assertEquals(GitFailure.CONFLICT, r.cli.executePlan(conflicting).failure)
+        assertTrue(r.cli.abortOperation().ok)
+
+        r.git("switch", "-c", "clean", "main~2"); r.commit("c", "c\n"); r.git("switch", "main")
+        val clean = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "refs/heads/clean"))
+        assertEquals(emptyList(), clean.conflicts)
+        val merged = r.cli.executePlan(clean)
+        assertTrue(merged.ok, merged.output)
+        assertEquals("Merge branch 'clean'", r.git("log", "-1", "--format=%s"))
+    }
+
+    @Test fun `merge by name is refused when the name moved after confirmation`() = RepositoryFixture().use { r ->
+        val base = r.commit(); r.git("checkout", "-b", "topic"); r.commit("new", "new\n"); r.git("switch", "main")
+        val plan = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "topic"))
+        r.git("switch", "topic"); r.commit("later", "later\n"); r.git("switch", "main")
+        assertFalse(r.cli.executePlan(plan).ok)
+        assertEquals(base, r.git("rev-parse", "HEAD"))
+    }
+
+    @Test fun `reset summary counts leaving commits and only hard reset lists discarded files`() = RepositoryFixture().use { r ->
+        val base = r.commit(); r.commit("b", "b\n"); r.commit("c", "c\n")
+        r.write("a", "staged\n"); r.git("add", "a"); r.write("a", "working\n"); r.write("untracked", "new\n")
         for (mode in ResetMode.entries) {
-            val plan = r.cli.planOperation(OperationIntent(PreviewKind.RESET, "target", mode))
-            assertTrue(plan.outcome.ok, plan.outcome.output)
-            assertEquals(mode != ResetMode.SOFT, plan.indexChanged)
-            assertEquals(mode == ResetMode.HARD, plan.workingImpact.contains("a"))
-            if (mode == ResetMode.HARD) {
-                assertTrue("ignored" in plan.workingImpact)
-                assertTrue(plan.files.any { it.path.endsWith(" · a") && "-working" in it.diff })
-            }
-            if (mode != ResetMode.SOFT) assertTrue(plan.files.any { it.path.endsWith(" · a") && "-staged" in it.diff })
-            assertEquals(base, r.git("rev-parse", "HEAD"))
+            val plan = r.cli.planOperation(OperationIntent(PreviewKind.RESET, base, mode))
+            assertEquals(2, plan.commits)
+            assertEquals(if (mode == ResetMode.HARD) listOf("a") else emptyList(), plan.discarded)
+            assertEquals(mode == ResetMode.HARD, plan.facts.any { it.tone == FactTone.DANGER })
             assertEquals("staged", r.git("show", ":a")); assertEquals("working\n", r.root.resolve("a").readText())
         }
+        val result = r.cli.executePlan(r.cli.planOperation(OperationIntent(PreviewKind.RESET, base, ResetMode.HARD)))
+        assertTrue(result.ok, result.output)
+        assertEquals(base, r.git("rev-parse", "HEAD"))
+        assertEquals("first\n", r.root.resolve("a").readText())
+        assertEquals("new\n", r.root.resolve("untracked").readText())
     }
 
-    @Test fun `conflicting rebase marks later commits unverified and does not touch source`() = RepositoryFixture().use { r ->
+    @Test fun `rebase summary counts replayed commits and does not touch the source`() = RepositoryFixture().use { r ->
         r.commit(); r.git("branch", "topic"); r.commit("a", "main\n"); r.git("switch", "topic"); r.commit("a", "topic\n"); val tip = r.commit("later", "later\n")
         val plan = r.cli.planOperation(OperationIntent(PreviewKind.REBASE, "main"))
-        assertTrue(plan.paused)
-        assertFalse(plan.verified)
-        assertTrue(plan.projected.isNotEmpty())
-        assertTrue(plan.expected.isNotEmpty())
-        assertTrue(plan.expected.all { it.id.startsWith("expected:") })
+        assertEquals(2, plan.commits)
+        assertNull(plan.conflicts)
         assertNull(r.cli.currentOperation())
         assertEquals(tip, r.git("rev-parse", "HEAD"))
         assertTrue(r.cli.status().isEmpty())
+        r.write("dirty", "local\n")
+        assertFails { r.cli.planOperation(OperationIntent(PreviewKind.REBASE, "main")) }
     }
 
-    @Test fun `merge refuses ignored collision and custom filters never execute in sandbox`() = RepositoryFixture().use { r ->
+    @Test fun `git refuses a merge that would overwrite a local ignored file`() = RepositoryFixture().use { r ->
         r.commit(".gitignore", "ignored\n"); r.git("checkout", "-b", "topic")
         r.write("ignored", "tracked\n"); r.git("add", "-f", "ignored"); r.git("commit", "-qm", "add"); r.git("switch", "main"); r.write("ignored", "local\n")
-        val plan = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "topic"))
-        assertFalse(plan.outcome.ok)
+        val head = r.git("rev-parse", "HEAD")
+        assertFalse(r.cli.executePlan(r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "topic"))).ok)
         assertEquals("local\n", r.root.resolve("ignored").readText())
-        r.git("config", "filter.probe.smudge", "touch ${r.root.resolve("must-not-exist")}")
-        val next = r.cli.planOperation(OperationIntent(PreviewKind.RESET, "topic", ResetMode.HARD))
-        assertTrue(next.warnings.isNotEmpty())
-        assertFalse(next.verified)
-        assertFalse(r.root.resolve("must-not-exist").exists())
+        assertEquals(head, r.git("rev-parse", "HEAD"))
     }
 
-    @Test fun `cleanup never follows directory symlinks and merge ff configuration is honored`() = RepositoryFixture().use { r ->
+    @Test fun `temporary cleanup never follows directory symlinks`() {
         val outside = java.nio.file.Files.createTempDirectory("gitviz-outside-")
         try {
             java.nio.file.Files.writeString(outside.resolve("sentinel"), "keep")
-            r.commit(); r.git("checkout", "-b", "topic"); r.commit("next", "next\n"); r.git("switch", "main")
-            java.nio.file.Files.createSymbolicLink(r.root.resolve("external").toPath(), outside)
-            r.git("config", "merge.ff", "false")
-            val plan = r.cli.planOperation(OperationIntent(PreviewKind.MERGE, "topic"))
-            assertTrue(plan.outcome.ok, plan.outcome.output)
-            assertTrue(plan.afterHead.startsWith("preview:"))
-            assertEquals("keep", java.nio.file.Files.readString(outside.resolve("sentinel")))
-            val cancelled = java.nio.file.Files.createTempDirectory("gitviz-preview-cancel-test-")
-            java.nio.file.Files.createSymbolicLink(cancelled.resolve("external"), outside)
-            deleteTemporaryTree(cancelled)
+            val temporary = java.nio.file.Files.createTempDirectory("gitviz-cleanup-test-")
+            java.nio.file.Files.createSymbolicLink(temporary.resolve("external"), outside)
+            deleteTemporaryTree(temporary)
             assertEquals("keep", java.nio.file.Files.readString(outside.resolve("sentinel")))
         } finally { deleteTemporaryTree(outside) }
     }
 
-    @Test fun `merge mainline is explicit and real parent count is used`() = RepositoryFixture().use { r ->
+    @Test fun `cherry-pick of a merge uses the chosen mainline parent`() = RepositoryFixture().use { r ->
         r.commit(); r.git("branch", "side"); r.commit("main", "main\n"); r.git("switch", "side"); r.commit("side", "side\n"); r.git("merge", "--no-ff", "--no-edit", "main")
         val merge = r.git("rev-parse", "HEAD"); r.git("checkout", "--detach", "HEAD^2")
         val plan = r.cli.planOperation(OperationIntent(PreviewKind.CHERRY_PICK, merge, mainline = 2))
         assertEquals(2, plan.parentCount)
-        assertTrue(plan.outcome.ok, plan.outcome.output)
-        assertTrue(plan.files.any { it.path.endsWith(" · side") })
+        assertEquals(emptyList(), plan.conflicts)
+        assertFails { r.cli.planOperation(OperationIntent(PreviewKind.CHERRY_PICK, merge, mainline = 3)) }
+        val result = r.cli.executePlan(plan)
+        assertTrue(result.ok, result.output)
+        assertTrue(r.root.resolve("side").isFile)
     }
 }
