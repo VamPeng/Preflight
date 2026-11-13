@@ -1,5 +1,7 @@
 package gitviz
 
+import gitviz.git.*
+import gitviz.logic.*
 import java.io.File
 import java.lang.management.ManagementFactory
 

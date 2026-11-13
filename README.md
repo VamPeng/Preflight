@@ -86,41 +86,48 @@ open "/Applications/GitViz Dev.app"
 打包产物统一放在 `build/compose/packages.noindex/`，避免 Spotlight 把构建副本也列成应用入口；日常只使用“应用程序”里的正式版和开发版。
 
 ## 结构
-| 文件 | 作用 |
-|---|---|
-| `GitRepo.kt` | git 读取层（JGit）：提交、引用、改动文件、diff |
-| `GraphLayout.kt` | 分支图布局：给每个提交分配列，算出线怎么连 |
-| `DiffLines.kt` | 给 diff 逐行分类（文件头、增、删、上下文） |
-| `GraphCell.kt` | 画每一行的分支图 |
-| `RefTree.kt` | 把引用名按 `/` 拆成树 |
-| `Sidebar.kt` | 左侧引用树面板 |
-| `Theme.kt` | 浅色和深色配色、字号、字体 |
-| `Components.kt` | 图标、按钮、头像这些通用组件 |
-| `CommitList.kt` | 提交列表 |
-| `CommitHistoryLayout.kt` | 提交列表底层、可展开和拖动的底部详情浮层 |
-| `CommitDetail.kt` | 提交详情、diff、文件历史、Blame |
-| `GitCli.kt` | 调用系统 git 执行所有写操作 |
-| `GitProcess.kt`、`Operations.kt` | 字节输入输出、执行结果核对、仓库写入协调与操作事务 |
-| `OperationPreview.kt`、`OperationConfirmDialog.kt`、`Rebase.kt` | 操作前的只读后果摘要与直接执行、确认框、rebase 暂停流程 |
-| `ReferenceComparison.kt`、`BlameTrace.kt` | 固定 OID 的引用对比与来源行连续追溯 |
-| `PatchDocument.kt`、`DiffHighlight.kt` | 完整补丁与部分暂存、完整源码分词和高亮缓存 |
-| `Commands.kt`、`BranchDrag.kt` | 共享命令可用状态、快捷键和分支拖拽 |
-| `ChangesView.kt` | 本地改动和提交说明 |
-| `StashView.kt` | 储藏列表和内容 |
-| `FileTree.kt`、`FilesView.kt` | 读工作区目录和每个文件的 git 状态、文件页的界面 |
-| `Conflicts.kt`、`ConflictView.kt` | 解析冲突标记、解决冲突的界面 |
-| `Settings.kt` | 用户选项、最近的仓库、设置页 |
-| `GitMenus.kt` | 提交和分支的右键菜单、确认对话框 |
-| `NetBanner.kt` | 通用操作进度、结果、警告和失败反馈，以及完整输出和复制 |
-| `Teaching.kt` | 关键操作命令记录、解释与敏感参数脱敏 |
-| `Insights.kt`、`InsightsView.kt` | 历史统计、贡献者和热点文件 |
-| `Replay.kt`、`ReplayView.kt` | 固定历史快照和只读时间轴播放 |
-| `InteractiveRebase.kt`、`InteractiveRebaseView.kt` | 线性提交编辑、受控 todo |
-| `Worktrees.kt`、`Submodules.kt`、`Lfs.kt`、`Subtrees.kt`、`RepositoryToolsView.kt` | 扩展仓库工具及其操作边界 |
-| `Forge.kt`、`ForgeView.kt`、`ServiceHttp.kt` | 托管平台只读适配与有超时、大小限制和取消的 HTTP 请求 |
-| `Ai.kt`、`AiView.kt` | 受限改动快照、模型协议、发送确认与草稿保护 |
-| `Main.kt` | 窗口、工具栏、状态栏 |
+
+源码在 `src/main/kotlin/gitviz/`，按职责分包；测试在 `src/test/kotlin/gitviz/` 下用同样的分包。`git`、`logic`、`service` 三个包里没有界面代码。
+
+| 包 | 文件 | 作用 |
+|---|---|---|
+| 根目录 | `Main.kt` | 入口、主窗口和各页面的切换 |
+| `git/` | `GitRepo.kt` | git 读取层（JGit）：提交、引用、改动文件、diff |
+| | `GitCli.kt` | 调用系统 git 执行所有写操作 |
+| | `GitProcess.kt`、`Operations.kt` | 字节输入输出、执行结果核对、仓库写入协调与操作事务 |
+| | `OperationPreview.kt`、`Rebase.kt` | 操作前的只读后果摘要与直接执行、rebase 暂停流程 |
+| | `ReferenceComparison.kt`、`BlameTrace.kt` | 固定 OID 的引用对比与来源行连续追溯 |
+| | `PatchDocument.kt` | 完整补丁与部分暂存 |
+| | `Conflicts.kt`、`ConflictSources.kt` | 解析冲突标记、冲突各方的来源 |
+| | `Teaching.kt` | 关键操作命令记录、解释与敏感参数脱敏 |
+| | `Insights.kt`、`Replay.kt`、`InteractiveRebase.kt`、`Pull.kt` | 历史统计、固定历史快照、线性提交编辑与受控 todo、拉取策略 |
+| | `Worktrees.kt`、`Submodules.kt`、`Lfs.kt`、`Subtrees.kt` | 扩展仓库工具及其操作边界 |
+| | `TemporaryFiles.kt` | 清理临时文件，不跟随符号链接 |
+| `logic/` | `GraphLayout.kt` | 分支图布局：给每个提交分配列，算出线怎么连 |
+| | `DiffLines.kt`、`DiffHighlight.kt` | 给 diff 逐行分类；完整源码分词和高亮缓存 |
+| | `RefTree.kt`、`FileTree.kt` | 把引用名按 `/` 拆成树；读工作区目录和每个文件的 git 状态 |
+| `service/` | `Forge.kt`、`ServiceHttp.kt` | 托管平台只读适配与有超时、大小限制和取消的 HTTP 请求 |
+| | `Ai.kt` | 受限改动快照、模型协议 |
+| `platform/` | `Vibrancy.kt`、`WindowSize.kt` | macOS 毛玻璃窗口、窗口尺寸保存与恢复 |
+| | `WorkTreeWatcher.kt`、`DirectoryChooser.kt` | 工作区文件监听、系统目录选择框 |
+| `ui/` | `Theme.kt`、`Components.kt`、`Logo.kt` | 浅色和深色配色、字号、字体；图标、按钮、头像这些通用组件 |
+| | `AppBars.kt`、`Welcome.kt` | 工具栏、搜索框、侧边栏条目、状态栏；欢迎页 |
+| | `Commands.kt` | 共享命令可用状态和快捷键 |
+| | `GitMenus.kt`、`OperationConfirmDialog.kt` | 提交和分支的右键菜单、确认对话框 |
+| | `NetBanner.kt` | 通用操作进度、结果、警告和失败反馈，以及完整输出和复制 |
+| | `Settings.kt` | 用户选项、界面语言、最近的仓库、设置页 |
+| `ui/history/` | `CommitList.kt`、`GraphCell.kt` | 提交列表、每一行的分支图 |
+| | `CommitHistoryLayout.kt`、`CommitHistoryScrollbar.kt` | 提交列表底层、可展开和拖动的底部详情浮层、滚动条 |
+| | `CommitDetail.kt` | 提交详情、diff、文件历史、Blame |
+| | `Sidebar.kt`、`BranchFilterBar.kt`、`BranchDrag.kt` | 左侧引用树面板、分支过滤、分支拖拽 |
+| `ui/changes/` | `ChangesView.kt`、`PartialStageView.kt` | 本地改动、提交说明、按行暂存 |
+| | `StashView.kt` | 储藏列表和内容 |
+| | `ConflictView.kt`、`ConflictEditor.kt` | 解决冲突的界面 |
+| `ui/tools/` | `FilesView.kt`、`ReflogView.kt` | 文件页、引用日志 |
+| | `InsightsView.kt`、`ReplayView.kt`、`InteractiveRebaseView.kt` | 洞察、历史回放、交互式变基 |
+| | `RepositoryToolsView.kt`、`ComparisonView.kt`、`BlameTraceView.kt`、`PullDialog.kt` | 仓库工具、引用对比、来源追溯、拉取选项 |
+| | `ForgeView.kt`、`AiView.kt` | 托管平台面板、AI 草稿与发送确认 |
 
 界面原型在 `docs/prototype/`，改界面前先看那里。`ScreenshotTest` 会把主界面渲染成图片存到 `build/screens/`。
 
-git 层和界面层是分开的，以后换界面框架也能保留 `GitRepo` 和 `GraphLayout`。
+git 层和界面层是分开的，以后换界面框架也能保留 `git/` 和 `logic/` 两个包。

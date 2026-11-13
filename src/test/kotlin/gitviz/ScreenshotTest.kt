@@ -1,5 +1,11 @@
 package gitviz
 
+import gitviz.git.*
+import gitviz.logic.*
+import gitviz.ui.*
+import gitviz.ui.changes.*
+import gitviz.ui.history.*
+import gitviz.ui.tools.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState

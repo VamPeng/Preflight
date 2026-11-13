@@ -2,6 +2,10 @@
 
 package gitviz
 
+import gitviz.git.*
+import gitviz.service.*
+import gitviz.ui.*
+import gitviz.ui.tools.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*

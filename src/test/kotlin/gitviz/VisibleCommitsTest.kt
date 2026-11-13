@@ -1,5 +1,6 @@
 package gitviz
 
+import gitviz.git.*
 import org.eclipse.jgit.api.Git
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest

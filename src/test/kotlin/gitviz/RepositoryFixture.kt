@@ -1,5 +1,6 @@
 package gitviz
 
+import gitviz.git.*
 import java.io.File
 import java.nio.file.Files
 
