@@ -235,11 +235,60 @@ class FileTreeTest {
         File(root, ".gitignore").writeText("build/") // 没有结尾换行
         write("src/[id].kt")
         write("src/other.kt")
-        appendToGitignore(root, "src/[id].kt", isDir = false)
+        appendIgnoreRules(File(root, ".gitignore"), listOf("src/[id].kt"), isDir = false)
+        appendIgnoreRules(File(root, ".gitignore"), listOf("src/[id].kt"), isDir = false) // 同一条不重复加
         assertEquals("build/\n/src/\\[id].kt\n", File(root, ".gitignore").readText())
         val src = listing(cli, "src").entries.associateBy { it.name }
         assertEquals(FileMark.IGNORED, src.getValue("[id].kt").mark)
         assertEquals(FileMark.UNTRACKED, src.getValue("other.kt").mark)
+    }
+
+    @Test
+    fun `local ignore goes to info exclude and leaves gitignore alone`() {
+        val cli = repo()
+        write("notes/todo.md")
+        write("scratch.txt")
+        val before = File(root, ".gitignore").readText()
+        assertTrue(cli.ignore(listOf("notes"), directory = true, target = IgnoreTarget.EXCLUDE).ok)
+        assertTrue(cli.ignore(listOf("scratch.txt"), directory = false, target = IgnoreTarget.EXCLUDE).ok)
+        assertEquals(before, File(root, ".gitignore").readText())
+        assertTrue(File(root, ".git/info/exclude").readText().endsWith("/notes/\n/scratch.txt\n"))
+        val top = listing(cli, "").entries.associateBy { it.name }
+        assertEquals(FileMark.IGNORED, top.getValue("notes").mark)
+        assertEquals(FileMark.IGNORED, top.getValue("scratch.txt").mark)
+    }
+
+    @Test
+    fun `exclude is written to the shared git dir from a linked worktree`() {
+        val cli = repo()
+        val linked = File(root.parentFile, root.name + "-linked")
+        try {
+            git("worktree", "add", "-q", "-b", "side", linked.path)
+            File(linked, "tmp.txt").writeText("x")
+            assertTrue(GitCli(linked).ignore(listOf("tmp.txt"), directory = false, target = IgnoreTarget.EXCLUDE).ok)
+            assertTrue(File(root, ".git/info/exclude").readText().contains("/tmp.txt\n"))
+            assertTrue(cli.ignoreFile(IgnoreTarget.EXCLUDE).canonicalFile == File(root, ".git/info/exclude").canonicalFile)
+        } finally {
+            linked.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `ignoring a folder keeps tracked files unless asked to stop tracking`() {
+        val cli = repo()
+        write("src/new.kt")
+        assertEquals(3, cli.trackedCount("src"))
+        assertTrue(cli.ignore(listOf("src"), directory = true).ok)
+        assertTrue(File(root, ".gitignore").readText().endsWith("/src/\n"))
+        // 规则管不到已跟踪的：a.kt 还在索引里，新文件被忽略
+        assertEquals(3, cli.trackedCount("src"))
+        assertEquals(FileMark.IGNORED, listing(cli, "src").entries.single { it.name == "new.kt" }.mark)
+
+        assertTrue(cli.ignore(listOf("src"), directory = true, stopTracking = true).ok)
+        assertEquals(0, cli.trackedCount("src"))
+        assertTrue(File(root, "src/a.kt").isFile) // 本地文件留着
+        assertEquals("/src/\n", File(root, ".gitignore").readText().lines().last { it.isNotEmpty() }.let { "$it\n" })
+        assertTrue(git("status", "--porcelain").lines().any { it.startsWith("D  src/a.kt") })
     }
 
     @Test

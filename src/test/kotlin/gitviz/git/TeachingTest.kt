@@ -15,6 +15,23 @@ class TeachingTest {
         assertEquals(result.lessons, describeAction("Staging", "Staged", result).lessons)
     }
 
+    @Test fun `batch stage lists the paths it works on and shortens a long list`() = RepositoryFixture().use { r ->
+        r.write("one.txt", "1\n"); r.write("two.txt", "2\n")
+        val few = Teaching.capture(true) { r.cli.stage(r.cli.status()) }
+        assertTrue(few.ok, few.output)
+        assertEquals(listOf("git add -- :(literal)one.txt :(literal)two.txt"), few.lessons.map { it.command.orEmpty().replace("'", "") })
+        // 这个仓库还没有提交，取消暂存走 git rm --cached
+        val unstaged = Teaching.capture(true) { r.cli.unstage(r.cli.status().filter { it.hasStaged }) }
+        assertTrue(unstaged.ok, unstaged.output)
+        assertEquals("git rm --cached -q -- :(literal)one.txt :(literal)two.txt", unstaged.lessons.single().command.orEmpty().replace("'", ""))
+        repeat(30) { r.write("many/f$it.txt", "$it\n") }
+        val bulk = Teaching.capture(true) { r.cli.stage(r.cli.status()) }
+        assertTrue(bulk.ok, bulk.output)
+        val shown = bulk.lessons.single().command.orEmpty().split(" ")
+        assertEquals("...", shown.last())
+        assertEquals(20, shown.count { it.replace("'", "").startsWith(":(literal)") })
+    }
+
     @Test fun `disabled and failed captures cannot leak commands into following operations`() {
         val disabled = Teaching.capture(false) { Teaching.command(listOf("push")); GitResult(null, "") }
         assertTrue(disabled.lessons.isEmpty())

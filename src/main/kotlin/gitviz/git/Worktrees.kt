@@ -25,7 +25,8 @@ internal fun parseWorktrees(text: String): List<WorktreeInfo> {
 
 internal fun GitCli.worktrees(): List<WorktreeInfo> = parseWorktrees(read("worktree", "list", "--porcelain", "-z"))
 
-internal fun GitCli.addWorktree(path: String, branch: String, base: String = "HEAD", newBranch: Boolean = true): GitResult =
+/** track：新建分支时让它跟踪这个远程分支（refs/remotes/…），和双击远程分支检出一样。 */
+internal fun GitCli.addWorktree(path: String, branch: String, base: String = "HEAD", newBranch: Boolean = true, track: String? = null): GitResult =
     coordinator.execute(OperationRequest(OperationKind.OTHER)) {
         check(currentOperation() == null) { t("Finish the current Git operation first", "请先完成当前 Git 操作") }
         val target = File(path)
@@ -38,7 +39,10 @@ internal fun GitCli.addWorktree(path: String, branch: String, base: String = "HE
         require(branch.isNotBlank() && !branch.startsWith('-') && raw(listOf("check-ref-format", "refs/heads/$branch")).exitCode == 0) {
             t("Enter a valid local branch name", "请输入有效的本地分支名")
         }
-        val args = if (newBranch) {
+        val args = if (newBranch && track != null) {
+            read("show-ref", "--verify", track)
+            listOf("worktree", "add", "--track", "-b", branch, "--", canonical.toString(), track)
+        } else if (newBranch) {
             val oid = read("rev-parse", "--verify", "--end-of-options", "$base^{commit}").trim()
             listOf("worktree", "add", "-b", branch, "--", canonical.toString(), oid)
         } else {
@@ -48,6 +52,15 @@ internal fun GitCli.addWorktree(path: String, branch: String, base: String = "HE
         }
         raw(args, environment = mapOf("GIT_LFS_SKIP_SMUDGE" to "1"), teach = true).result()
     }
+
+/** 远程分支检出到新工作树：本地已有同名分支就检出它，没有就新建一个跟踪远程的本地分支。 */
+internal fun GitCli.addRemoteWorktree(path: String, remoteBranch: String): GitResult {
+    val remote = read("remote").lines().filter { it.isNotBlank() && remoteBranch.startsWith("$it/") }.maxByOrNull { it.length }
+        ?: return GitResult(GitFailure.OTHER, t("Unknown remote for $remoteBranch", "找不到 $remoteBranch 所属的远程"))
+    val local = remoteBranch.removePrefix("$remote/")
+    val exists = raw(listOf("rev-parse", "-q", "--verify", "refs/heads/$local")).exitCode == 0
+    return if (exists) addWorktree(path, local, newBranch = false) else addWorktree(path, local, track = "refs/remotes/$remoteBranch")
+}
 
 internal fun GitCli.removeWorktree(reviewed: WorktreeInfo): GitResult = coordinator.execute(OperationRequest(OperationKind.OTHER)) {
     val current = worktrees().singleOrNull { it.path == reviewed.path }

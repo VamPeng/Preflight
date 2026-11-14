@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.IntOffset
 internal val TitleBarHeight = 52.dp
 
 @Composable
-internal fun WorkspaceItem(label: String, icon: String, selected: Boolean, badge: Int, tag: String? = null, onClick: () -> Unit) {
+internal fun WorkspaceItem(label: String, icon: String, selected: Boolean, badge: Int, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(5.dp))
             .background(if (selected) Palette.Raised else androidx.compose.ui.graphics.Color.Transparent)
@@ -46,10 +46,6 @@ internal fun WorkspaceItem(label: String, icon: String, selected: Boolean, badge
         Icon(icon, if (selected) Palette.AccentInk else Palette.Muted, size = 15.dp)
         Text(label, fontSize = TypeScale.Body, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.weight(1f))
-        if (tag != null) {
-            Text(tag, fontSize = TypeScale.Caption, color = Palette.AccentInk,
-                modifier = Modifier.background(Palette.Raised, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
-        }
         if (badge > 0) {
             Text(
                 "$badge", fontSize = TypeScale.Caption, fontWeight = FontWeight.SemiBold, color = Palette.OnAccent,

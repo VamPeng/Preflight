@@ -194,23 +194,45 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
         return parseStatus(output)
     }
 
-    fun stage(file: WorkingFile): GitResult = run("add", "--", literal(file.path))
+    fun stage(file: WorkingFile): GitResult = stage(listOf(file))
 
-    /** 暂存全部改动，包括未跟踪的文件和删除。 */
-    fun stageAll(): GitResult = run("add", "--all", "--", ":/")
+    fun unstage(file: WorkingFile): GitResult = unstage(listOf(file))
 
-    fun unstageAll(): GitResult =
-        if (hasCommits()) run("restore", "--staged", "--", ":/")
-        else run("rm", "--cached", "-r", "-q", "--", ":/")
+    fun discard(file: WorkingFile): GitResult = discard(listOf(file))
 
-    fun unstage(file: WorkingFile): GitResult =
-        if (hasCommits()) run("restore", "--staged", "--", literal(file.path))
-        else run("rm", "--cached", "-q", "--", literal(file.path))
+    /** 暂存这些文件，包括未跟踪的文件和删除。 */
+    fun stage(files: List<WorkingFile>): GitResult = onPaths(listOf("add"), files)
+
+    fun unstage(files: List<WorkingFile>): GitResult =
+        if (hasCommits()) onPaths(listOf("restore", "--staged"), files) else onPaths(listOf("rm", "--cached", "-q"), files)
 
     /** 丢弃工作区的改动，已暂存的部分不动。未跟踪的文件会被删除。 */
-    fun discard(file: WorkingFile): GitResult =
-        if (file.untracked) run("clean", "-f", "-q", "--", literal(file.path))
-        else run("restore", "--", literal(file.path))
+    fun discard(files: List<WorkingFile>): GitResult {
+        val (fresh, tracked) = files.partition { it.untracked }
+        return coordinator.execute(OperationRequest(OperationKind.FILE)) {
+            val restored = onPaths(listOf("restore"), tracked)
+            if (!restored.ok) return@execute restored
+            // git clean 不支持从文件读路径，只能放在命令行里，分批免得超出长度上限
+            fresh.chunked(CLEAN_BATCH).map { run("clean", "-f", "-q", "--", *it.map { f -> literal(f.path) }.toTypedArray()) }
+                .firstOrNull { !it.ok } ?: GitResult(null, "")
+        }
+    }
+
+    /**
+     * 对一批文件执行同一条命令。路径用 NUL 分隔，从标准输入交给 git，
+     * 不受命令行长度限制；每个路径都按字面匹配，[id].tsx 这样的文件名不会被当成通配符。
+     */
+    private fun onPaths(command: List<String>, files: List<WorkingFile>): GitResult {
+        if (files.isEmpty()) return GitResult(null, "")
+        val args = command + listOf("--pathspec-from-file=-", "--pathspec-file-nul")
+        val input = files.joinToString("") { literal(it.path) + "\u0000" }.toByteArray()
+        return coordinator.execute(OperationRequest.command(args)) {
+            // 教学记录里写等价的命令（带上路径），不写从标准输入读路径的内部形式；太多时只列前面一部分
+            val shown = files.take(TEACH_PATHS).map { literal(it.path) } + if (files.size > TEACH_PATHS) listOf("...") else emptyList()
+            Teaching.command(command + "--" + shown)
+            raw(args, input = input).result()
+        }
+    }
 
     fun diff(file: WorkingFile, staged: Boolean): String {
         val args = when {
@@ -410,11 +432,28 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
         run("add", "--", literal(path))
     }
 
-    fun ignore(path: String, directory: Boolean): GitResult = coordinator.execute(OperationRequest(OperationKind.FILE)) {
-        Teaching.note("GitViz appends an escaped rule to .gitignore; no Git command performs this file edit.", "GitViz 向 .gitignore 追加转义后的规则；这个文件编辑不对应单条 Git 命令。")
-        appendToGitignore(workTree, path, directory)
-        GitResult(null, "")
+    /** 规则文件的位置。exclude 在共用的 git 目录里，链接工作区也写到那儿，git 才认。 */
+    fun ignoreFile(target: IgnoreTarget): File = when (target) {
+        IgnoreTarget.GITIGNORE -> File(workTree, ".gitignore")
+        IgnoreTarget.EXCLUDE -> gitDirs.common.resolve("info/exclude")
     }
+
+    /**
+     * 把这些路径加进忽略规则。忽略只管未跟踪的文件；stopTracking 时再把目录里已跟踪的文件移出版本库（git rm -r --cached），
+     * 本地文件留着，删除记录进暂存区。
+     */
+    fun ignore(paths: List<String>, directory: Boolean, target: IgnoreTarget = IgnoreTarget.GITIGNORE, stopTracking: Boolean = false): GitResult =
+        coordinator.execute(OperationRequest(OperationKind.FILE)) {
+            paths.forEach { safeWorkingPath(it) }
+            val name = if (target == IgnoreTarget.GITIGNORE) ".gitignore" else ".git/info/exclude"
+            Teaching.note("GitViz appends escaped rules to $name; no Git command performs this file edit.", "GitViz 向 $name 追加转义后的规则；这个文件编辑不对应单条 Git 命令。")
+            appendIgnoreRules(ignoreFile(target), paths, directory)
+            if (stopTracking) run("rm", "-r", "--cached", "-q", "--", *paths.map(::literal).toTypedArray()) else GitResult(null, "")
+        }
+
+    /** 目录里有几个文件已在版本控制中（在索引里）。 */
+    fun trackedCount(dir: String): Int =
+        exec(listOf("ls-files", "-z", "--", literal(dir))).let { (exit, out) -> if (exit == 0) out.split('\u0000').count { it.isNotEmpty() } else 0 }
 
     /** 整个文件用某一边的版本。那一边已经删除这个文件时，就删除它。 */
     fun resolveWhole(path: String, ours: Boolean, expectedSignature: String? = null): GitResult = coordinator.execute(OperationRequest(OperationKind.FILE)) {
@@ -466,6 +505,8 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
     private companion object {
         const val TIMEOUT_SECONDS = 120L
         const val NETWORK_TIMEOUT_SECONDS = 600L
+        const val CLEAN_BATCH = 200
+        const val TEACH_PATHS = 20
         const val SWITCH_ORIGIN = "gitviz-switch-origin"
         const val EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904" // git 里空目录的固定哈希
     }

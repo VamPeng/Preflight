@@ -16,24 +16,24 @@ import kotlinx.coroutines.*
 
 private class AiGeneration(val context: AiContext, val request: AiModelRequest, val token: String)
 
-@Composable internal fun AiView(cli: GitCli, scope: AiScope, onScope: (AiScope) -> Unit, connection: AiConnection,
+@Composable internal fun AiView(cli: GitCli, connection: AiConnection,
                                draft: CommitDraft, actions: GitActions, revision: Int, busy: Boolean, onDraft: () -> Unit, modifier: Modifier) {
     var configure by remember { mutableStateOf(true) }
-    var refresh by remember(cli, scope) { mutableStateOf<Int?>(null) }
-    var context by remember(cli, scope) { mutableStateOf<AiContext?>(null) }
-    var input by remember(cli, scope) { mutableStateOf("") }
-    var output by remember(cli, scope) { mutableStateOf("") }
-    var error by remember(cli, scope) { mutableStateOf<String?>(null) }
-    var preparing by remember(cli, scope) { mutableStateOf(false) }
-    var generating by remember(cli, scope) { mutableStateOf(false) }
-    var current by remember(cli, scope) { mutableStateOf(false) }
-    var generation by remember(cli, scope) { mutableStateOf<AiGeneration?>(null) }
-    var confirmSend by remember(cli, scope, context, input, connection.endpoint, connection.model, connection.protocol) { mutableStateOf(false) }
+    var refresh by remember(cli) { mutableStateOf<Int?>(null) }
+    var context by remember(cli) { mutableStateOf<AiContext?>(null) }
+    var input by remember(cli) { mutableStateOf("") }
+    var output by remember(cli) { mutableStateOf("") }
+    var error by remember(cli) { mutableStateOf<String?>(null) }
+    var preparing by remember(cli) { mutableStateOf(false) }
+    var generating by remember(cli) { mutableStateOf(false) }
+    var current by remember(cli) { mutableStateOf(false) }
+    var generation by remember(cli) { mutableStateOf<AiGeneration?>(null) }
+    var confirmSend by remember(cli, context, input, connection.endpoint, connection.model, connection.protocol) { mutableStateOf(false) }
     val tasks = rememberCoroutineScope()
-    LaunchedEffect(cli, scope, refresh) {
+    LaunchedEffect(cli, refresh) {
         if (refresh == null) return@LaunchedEffect
         preparing = true; error = null; context = null; input = ""; output = ""
-        try { context = runInterruptible(Dispatchers.IO) { cli.prepareAiContext(scope) }; input = context!!.text }
+        try { context = runInterruptible(Dispatchers.IO) { cli.prepareAiContext() }; input = context!!.text }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message }
         finally { preparing = false }
@@ -41,7 +41,7 @@ private class AiGeneration(val context: AiContext, val request: AiModelRequest, 
     LaunchedEffect(cli, context, revision, output) {
         current = context?.let { snapshot -> runInterruptible(Dispatchers.IO) { cli.isAiContextCurrent(snapshot) } } ?: false
     }
-    LaunchedEffect(cli, scope, generation) {
+    LaunchedEffect(cli, generation) {
         val job = generation ?: return@LaunchedEffect
         generating = true; error = null; output = ""
         try {
@@ -75,15 +75,9 @@ private class AiGeneration(val context: AiContext, val request: AiModelRequest, 
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled = !occupied, onClick = { onScope(AiScope()) }) { Text(t("Commit draft", "提交草稿"), color = if (scope.kind == AiKind.COMMIT) Palette.Accent else Palette.Muted) }
-            TextButton(enabled = !occupied, onClick = { onScope(AiScope(AiKind.BRANCH)) }) { Text(t("Branch summary", "分支摘要"), color = if (scope.kind == AiKind.BRANCH) Palette.Accent else Palette.Muted) }
-            Spacer(Modifier.weight(1f))
+            Text(t("Commit draft from staged changes", "根据暂存改动生成提交草稿"), fontSize = TypeScale.Body, modifier = Modifier.weight(1f))
             TextButton(enabled = !occupied, onClick = { refresh = (refresh ?: 0) + 1; generation = null }) { Text(t("Prepare / reload snapshot", "准备／重载快照")) }
             if (preparing || generating) TextButton(onClick = { refresh = null; generation = null }) { Text(t("Cancel", "取消")) }
-        }
-        if (scope.kind == AiKind.BRANCH) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(scope.leftLabel, { onScope(scope.copy(left = it, leftLabel = it)) }, singleLine = true, label = { Text(t("Base A", "基准 A")) }, enabled = !occupied, modifier = Modifier.weight(1f).textInputFocus())
-            OutlinedTextField(scope.rightLabel, { onScope(scope.copy(right = it, rightLabel = it)) }, singleLine = true, label = { Text(t("Target B", "目标 B")) }, enabled = !occupied, modifier = Modifier.weight(1f).textInputFocus())
         }
         context?.let { snapshot ->
             Text(snapshot.notice + if (snapshot.partial) t(" · Partial snapshot; review omissions below", " · 快照不完整，请检查下方省略说明") else "", fontSize = TypeScale.Small, color = if (snapshot.partial) Palette.Modified else Palette.Muted)
@@ -100,17 +94,17 @@ private class AiGeneration(val context: AiContext, val request: AiModelRequest, 
                     Checkbox(confirmSend, { confirmSend = it }, enabled = context != null && !occupied)
                     Text(t("I reviewed this text and allow sending it", "已检查文本，允许发送"), fontSize = TypeScale.Small, modifier = Modifier.weight(1f))
                     TextButton(enabled = valid && current && !occupied && confirmSend && input.isNotBlank(), onClick = {
-                        generation = AiGeneration(checkNotNull(context), AiModelRequest(connection.protocol, connection.endpoint, connection.model, scope.kind, input), connection.token)
+                        generation = AiGeneration(checkNotNull(context), AiModelRequest(connection.protocol, connection.endpoint, connection.model, input), connection.token)
                     }) { Text(t("Generate", "生成")) }
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (scope.kind == AiKind.COMMIT) t("Editable draft", "可编辑草稿") else t("Summary of the snapshot", "快照摘要"), fontSize = TypeScale.Body)
-                OutlinedTextField(output, { output = it }, readOnly = scope.kind == AiKind.BRANCH || generating, modifier = Modifier.fillMaxWidth().weight(1f).textInputFocus(), textStyle = androidx.compose.ui.text.TextStyle(fontSize = TypeScale.Body))
+                Text(t("Editable draft", "可编辑草稿"), fontSize = TypeScale.Body)
+                OutlinedTextField(output, { output = it }, readOnly = generating, modifier = Modifier.fillMaxWidth().weight(1f).textInputFocus(), textStyle = androidx.compose.ui.text.TextStyle(fontSize = TypeScale.Body))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(enabled = output.isNotBlank(), onClick = { clipboard.setText(AnnotatedString(output)) }) { Text(t("Copy", "复制")) }
                     Spacer(Modifier.weight(1f))
-                    if (scope.kind == AiKind.COMMIT) TextButton(enabled = current && output.isNotBlank() && !occupied, onClick = {
+                    TextButton(enabled = current && output.isNotBlank() && !occupied, onClick = {
                         val message = draft.message; val amend = draft.amend; val replacement = output
                         fun apply() {
                             val reviewed = context ?: return

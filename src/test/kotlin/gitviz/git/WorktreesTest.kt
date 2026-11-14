@@ -73,4 +73,27 @@ class WorktreesTest {
             assertTrue(r.git("show-ref", "--verify", "refs/heads/side").isNotEmpty())
         } finally { if (target.exists()) deleteTemporaryTree(target.toPath()) }
     }
+
+    @Test fun `remote branch checks out as a tracking local branch in a new worktree`(): Unit = RepositoryFixture().use { r ->
+        r.commit(); r.git("remote", "add", "origin", r.root.resolveSibling(r.root.name + "-no-such-remote").path)
+        r.git("update-ref", "refs/remotes/origin/release/2.0", "HEAD")
+        val first = r.root.resolveSibling(r.root.name + "-release-a")
+        val second = r.root.resolveSibling(r.root.name + "-release-b")
+        try {
+            assertTrue(r.cli.addRemoteWorktree(first.path, "origin/release/2.0").ok)
+            assertEquals("origin", r.git("config", "branch.release/2.0.remote"))
+            assertEquals("refs/heads/release/2.0", r.git("config", "branch.release/2.0.merge"))
+            assertTrue(r.cli.worktrees().any { it.branch == "refs/heads/release/2.0" })
+            // 本地分支已在别的工作树里，不能再检出一次
+            assertFalse(r.cli.addRemoteWorktree(second.path, "origin/release/2.0").ok)
+            assertTrue(r.cli.removeWorktree(r.cli.worktrees().single { it.branch == "refs/heads/release/2.0" }).ok)
+            // 已有同名本地分支时直接用它，不新建
+            assertTrue(r.cli.addRemoteWorktree(second.path, "origin/release/2.0").ok)
+            assertTrue(r.cli.worktrees().any { it.path == second.canonicalPath && it.branch == "refs/heads/release/2.0" })
+            assertFalse(r.cli.addRemoteWorktree(r.root.resolveSibling("x").path, "upstream/none").ok)
+        } finally {
+            if (first.exists()) deleteTemporaryTree(first.toPath())
+            if (second.exists()) deleteTemporaryTree(second.toPath())
+        }
+    }
 }

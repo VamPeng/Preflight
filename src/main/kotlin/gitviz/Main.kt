@@ -121,7 +121,7 @@ private const val MIN_RELOAD_GAP_MS = 1500L
 /** 监听期间没有变化时，多久兜底读一次。 */
 private const val FALLBACK_RELOAD_MS = 30_000L
 
-private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, INSIGHTS, REPLAY, TOOLS, FORGE, AI }
+private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, INSIGHTS, COMPARE, AI }
 
 /** 打开的仓库和已加载的那部分历史。不可变，每加载一页换一个新对象。 */
 internal class RepoState(
@@ -343,6 +343,11 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     var paletteOpen by remember { mutableStateOf(false) }
     val cli = remember(workTree) { workTree?.let(::GitCli) } // 刷新时不换对象，正在写的提交说明才不会丢
     val clipboard = LocalClipboardManager.current
+    // 侧边栏「工作树」「子模块」分组的数据。跟着工作区一起重读：写操作结束、文件变化后都会刷新
+    var worktrees by remember(cli) { mutableStateOf(emptyList<WorktreeInfo>()) }
+    var submodules by remember(cli) { mutableStateOf(emptyList<SubmoduleInfo>()) }
+    // 比较页正在比较的两个引用，从分支右键「与当前分支比较」进入
+    var compare by remember(cli) { mutableStateOf<CompareRequest?>(null) }
 
     suspend fun reloadWorking(force: Boolean = false) {
         if (operationBusy && !force) return
@@ -663,9 +668,16 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     }
 
     LaunchedEffect(cli) { rootFocus.requestFocus() }
+    LaunchedEffect(cli, workingReloads) {
+        val git = cli ?: return@LaunchedEffect
+        val read = withContext(Dispatchers.IO) {
+            // 读不出来就不显示分组，不打扰日常使用
+            runCatching { git.worktrees() }.getOrDefault(emptyList()) to runCatching { git.submodules() }.getOrDefault(emptyList())
+        }
+        worktrees = read.first; submodules = read.second
+    }
     val commitDraft = remember(cli) { CommitDraft() }
     val aiConnection = remember { AiConnection() }
-    var aiScope by remember(cli) { mutableStateOf(AiScope()) }
     val available = cli != null && !loading && !operationBusy
     val registry = CommandRegistry(listOf(
         AppCommand("search", t("Search history", "搜索历史"), s != null, "⌘/Ctrl F") { view = MainView.HISTORY; scope.launch { withFrameNanos { }; searchFocus.requestFocus() } },
@@ -673,9 +685,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         AppCommand("changes", t("Local changes", "本地改动"), cli != null) { view = MainView.CHANGES },
         AppCommand("insights", t("Repository insights", "统计和洞察"), s != null) { view = MainView.INSIGHTS },
         AppCommand("ai", t("AI assistance", "AI 辅助"), cli != null) { view = MainView.AI },
-        AppCommand("forge", t("Hosting platform", "托管平台"), cli != null) { view = MainView.FORGE },
-        AppCommand("tools", t("Repository tools (Beta)", "仓库工具（Beta）"), s != null) { view = MainView.TOOLS },
-        AppCommand("replay", t("Timeline replay", "时间轴回放"), s != null) { view = MainView.REPLAY },
         AppCommand("interactive-rebase", t("Interactive rebase…", "交互式变基…"), available && !inConflict && currentBranch != null) { interactiveBase = "HEAD^" },
         AppCommand("commit", t("Commit staged changes", "提交暂存改动"), available && !inConflict && commitDraft.message.isNotBlank() && (commitDraft.amend || working.any { it.hasStaged }), "⌘/Ctrl Enter") {
             runOp(NetStatus(t("Committing", "正在提交"), "", NetState.RUNNING), { describeAction(t("Committing", "正在提交"), t("Committed", "已提交"), it) }, onCompleted = { if (it) { commitDraft.message = ""; commitDraft.amend = false } }) { commit(commitDraft.message.trim(), commitDraft.amend) }
@@ -705,16 +714,13 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     }
                     WorkspaceItem(t("Changes", "本地改动"), Icons.Edit, view == MainView.CHANGES, working.size - conflicted.size) { view = MainView.CHANGES }
                     WorkspaceItem(t("All commits", "所有提交"), Icons.History, view == MainView.HISTORY, 0) { view = MainView.HISTORY }
-                    if (FeatureVisibility.visible("replay")) WorkspaceItem(t("Timeline replay", "时间轴回放"), Icons.History, view == MainView.REPLAY, 0) { view = MainView.REPLAY }
                     if (FeatureVisibility.visible("ai")) WorkspaceItem(t("AI assistance", "AI 辅助"), Icons.Edit, view == MainView.AI, 0) { view = MainView.AI }
-                    if (FeatureVisibility.visible("forge")) WorkspaceItem(t("Hosting platform", "托管平台"), Icons.Branch, view == MainView.FORGE, 0) { view = MainView.FORGE }
                     if (FeatureVisibility.visible("reflog")) WorkspaceItem("Reflog", Icons.History, view == MainView.REFLOG, 0) { view = MainView.REFLOG }
                     if (workTree != null) {
                         WorkspaceItem(t("Files", "文件"), Icons.Folder, view == MainView.FILES, 0) { view = MainView.FILES }
                     }
                     WorkspaceItem(t("Stashes", "储藏"), Icons.Stash, view == MainView.STASH, stashes.size) { view = MainView.STASH }
                     WorkspaceItem(t("Insights", "统计和洞察"), Icons.Chart, view == MainView.INSIGHTS, 0) { view = MainView.INSIGHTS }
-                    WorkspaceItem(t("Repository tools", "仓库工具"), Icons.Wrench, view == MainView.TOOLS, 0, tag = "Beta") { view = MainView.TOOLS }
                 }
                 HorizontalDivider()
                 RefSidebar(
@@ -738,7 +744,16 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                                 else listOf(MenuItem(t("Check out as local branch", "检出为本地分支")) {
                                     actions.run(t("Checking out", "正在检出"), t("Checked out ${ref.label.name}", "已检出 ${ref.label.name}")) { checkoutRemote(ref.label.name) }
                                 })
-                            menu = own + MenuSeparator + listOf(
+                            val here = currentBranch ?: "HEAD"
+                            val isCurrent = ref.label.kind == RefKind.BRANCH && ref.label.isCurrent
+                            val extra = listOfNotNull(
+                                MenuItem(t("Compare with $here", "与 $here 比较"), enabled = !isCurrent) {
+                                    compare = CompareRequest(currentBranch?.let { "refs/heads/$it" } ?: "HEAD", full, here, ref.label.name)
+                                    view = MainView.COMPARE
+                                },
+                                if (workTree != null) worktreeCheckoutItem(ref.label.name, isCurrent, worktrees, workTree, actions, remote = ref.label.kind == RefKind.REMOTE) else null,
+                            )
+                            menu = own + MenuSeparator + extra + MenuSeparator + listOf(
                                 MenuItem(t("Only this branch", "只看此分支")) { view = MainView.HISTORY; showHistoryOf(pathFilter, setOf(full)) },
                                 MenuItem(t("Include in branch filter", "加入分支过滤"), checked = full in branchFilter) {
                                     view = MainView.HISTORY
@@ -750,6 +765,20 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     branchColors = s.branchColors,
                     onHover = { hoveredRef = it },
                     modifier = Modifier.fillMaxWidth().weight(1f),
+                    groups = if (cli == null || workTree == null) emptyList() else {
+                        val openRepo: (File) -> Unit = { open(it, reportSuccess = true) }
+                        val reveal: (File) -> Unit = { dir ->
+                            scope.launch {
+                                val error = withContext(Dispatchers.IO) { runCatching { revealInFileManager(dir) }.exceptionOrNull() }
+                                if (error != null) net = NetStatus(t("Couldn't show ${dir.name}", "无法显示 ${dir.name}"), error.message ?: error.toString(), NetState.FAILED)
+                            }
+                        }
+                        val showMenu: (List<MenuEntry>) -> Unit = { menuAnchor = null; menu = it }
+                        listOfNotNull(
+                            worktreeGroup(worktrees, workTree, actions, openRepo, reveal, showMenu),
+                            submoduleGroup(submodules, cli, actions, openRepo, reveal, showMenu),
+                        )
+                    },
                 )
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -796,19 +825,15 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     ReflogView(s.repo, actions, { id -> view = MainView.HISTORY; jumpTo(id, direct = true) }, Modifier.fillMaxWidth().weight(1f), operationBusy || loading || cli == null)
                 } else if (view == MainView.INSIGHTS) {
                     InsightsView(s.repo.workTree ?: s.repo.repository.directory, Modifier.fillMaxWidth().weight(1f))
-                } else if (view == MainView.REPLAY) {
-                    ReplayView(s.repo.workTree ?: s.repo.repository.directory, s.result.refs, { path -> view = MainView.HISTORY; showHistoryOf(path) }, Modifier.fillMaxWidth().weight(1f))
                 } else if (view == MainView.AI && cli != null) {
-                    AiView(cli, aiScope, { aiScope = it }, aiConnection, commitDraft, actions, workingReloads, operationBusy || loading, { view = MainView.CHANGES }, Modifier.fillMaxWidth().weight(1f))
-                } else if (view == MainView.FORGE && cli != null) {
-                    ForgeView(cli, Modifier.fillMaxWidth().weight(1f))
-                } else if (view == MainView.TOOLS) {
-                    RepositoryToolsView(
-                        s.repo.workTree ?: s.repo.repository.directory, cli, s.result.refs, actions, workingReloads, operationBusy || loading,
-                        onOpen = { open(it, reportSuccess = true) },
+                    AiView(cli, aiConnection, commitDraft, actions, workingReloads, operationBusy || loading, { view = MainView.CHANGES }, Modifier.fillMaxWidth().weight(1f))
+                } else if (view == MainView.COMPARE && compare != null) {
+                    ComparisonView(
+                        s.repo.workTree ?: s.repo.repository.directory, compare!!, s.result.refs,
+                        onRequest = { compare = it },
                         onOpenCommit = { id -> view = MainView.HISTORY; jumpTo(id, direct = true) },
+                        onClose = { view = MainView.HISTORY },
                         modifier = Modifier.fillMaxWidth().weight(1f),
-                        onAi = if (FeatureVisibility.visible("ai")) ({ request -> aiScope = AiScope(AiKind.BRANCH, request.left, request.right, request.leftLabel, request.rightLabel); view = MainView.AI }) else null,
                     )
                 } else if (view == MainView.SETTINGS) {
                     SettingsView(cli, Modifier.fillMaxWidth().weight(1f))
@@ -857,7 +882,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         externalRevision = workingReloads,
                         draft = commitDraft,
-                        onAi = if (FeatureVisibility.visible("ai")) ({ aiScope = AiScope(); view = MainView.AI }) else null,
+                        onAi = if (FeatureVisibility.visible("ai")) ({ view = MainView.AI }) else null,
                         focus = changesFocus,
                         onFocused = { changesFocus = null },
                     )
@@ -938,9 +963,9 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         AlertDialog(onDismissRequest = { branchDrop = null }, title = { Text("${a.name} → ${b.name}") },
             text = { Text(t("Choose what to do with these two branches.", "选择要对这两个分支做的操作。")) },
             confirmButton = { Row {
-                TextButton(enabled = b.kind == RefKind.BRANCH, onClick = { preview = branchDropIntent(a, b, PreviewKind.MERGE); branchDrop = null }) { Text(t("Merge ${a.name} into ${b.name}", "将 ${a.name} 合并进 ${b.name}")) }
-                TextButton(enabled = a.kind == RefKind.BRANCH, onClick = { preview = branchDropIntent(a, b, PreviewKind.REBASE); branchDrop = null }) { Text(t("Rebase ${a.name} onto ${b.name}", "将 ${a.name} 变基到 ${b.name}")) }
-            } }, dismissButton = { TextButton(onClick = { branchDrop = null }) { Text(t("Cancel", "取消")) } })
+                DialogButton(t("Merge ${a.name} into ${b.name}", "将 ${a.name} 合并进 ${b.name}"), Palette.AccentInk, b.kind == RefKind.BRANCH) { preview = branchDropIntent(a, b, PreviewKind.MERGE); branchDrop = null }
+                DialogButton(t("Rebase ${a.name} onto ${b.name}", "将 ${a.name} 变基到 ${b.name}"), Palette.AccentInk, a.kind == RefKind.BRANCH) { preview = branchDropIntent(a, b, PreviewKind.REBASE); branchDrop = null }
+            } }, dismissButton = { DialogButton(t("Cancel", "取消")) { branchDrop = null } })
     }
     menu?.let { GitMenuPopup(it, onDismiss = { menu = null }, anchor = menuAnchor) }
     dialog?.let { ActionDialog(it, onDismiss = { dialog = null }) }

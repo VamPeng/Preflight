@@ -1,6 +1,7 @@
 package gitviz.ui.tools
 
 import gitviz.git.*
+import gitviz.platform.*
 import gitviz.logic.*
 import gitviz.service.*
 import gitviz.ui.*
@@ -87,6 +88,7 @@ internal fun FilesView(
     var listedWith by remember(root) { mutableStateOf<TreeStatus?>(null) }
     var revision by remember { mutableStateOf(0) }
     var menu by remember { mutableStateOf<List<MenuEntry>?>(null) }
+    var dialog by remember { mutableStateOf<DialogSpec?>(null) }
     // 传进来的可能是 . 这样的相对路径，显示名字要用真实的目录名
     val rootName = remember(root) { root.canonicalFile.name }
 
@@ -138,6 +140,45 @@ internal fun FilesView(
         }
     }
 
+    fun runIgnore(entry: FileEntry, target: IgnoreTarget, stopTracking: Boolean = false) {
+        val file = if (target == IgnoreTarget.GITIGNORE) ".gitignore" else ".git/info/exclude"
+        val done = if (stopTracking) t("Added ${entry.name} to $file and stopped tracking its files", "已将 ${entry.name} 加入 $file，并停止跟踪其中的文件")
+            else t("Added ${entry.name} to $file", "已将 ${entry.name} 加入 $file")
+        onRun(t("Updating $file", "正在更新 $file"), done, { ignore(listOf(entry.path), entry.isDir, target, stopTracking) }) { revision++ }
+    }
+
+    // 文件夹里有已跟踪的文件时，忽略规则管不到它们：先说明，写 .gitignore 时可以顺手停止跟踪
+    fun ignoreEntry(entry: FileEntry, target: IgnoreTarget) {
+        if (!entry.isDir) return runIgnore(entry, target)
+        scope.launch {
+            val tracked = withContext(Dispatchers.IO) { cli.trackedCount(entry.path) }
+            if (tracked == 0) return@launch runIgnore(entry, target)
+            val rule = ignoreRule(entry.path, true)
+            val files = countOf(tracked, "file")
+            if (target == IgnoreTarget.GITIGNORE) {
+                dialog = DialogSpec(
+                    t("Ignore folder", "忽略文件夹"),
+                    t("Add $rule to .gitignore. Already tracked here: $files. The rule doesn't apply to tracked files, so they stay tracked.",
+                        "把 $rule 加入 .gitignore。其中 $tracked 个文件已在版本控制中，忽略规则对它们不生效，会继续跟踪。"),
+                    t("Ignore", "忽略"),
+                    option = DialogOption(
+                        t("Also stop tracking these $files (keep local copies)", "同时停止跟踪这 $tracked 个文件（保留本地文件）"),
+                        checked = false,
+                        note = t("The removals are staged for you to commit. After you commit and push, anyone who pulls will have these files deleted from their disk.",
+                            "删除记录会进入暂存区，等你提交。提交并推送后，其他人拉取时这些文件会从他们的磁盘上删掉。"),
+                    ) { _, stop -> runIgnore(entry, target, stop) },
+                )
+            } else {
+                dialog = DialogSpec(
+                    t("Ignore folder locally", "仅本机忽略文件夹"),
+                    t("Add $rule to .git/info/exclude (this computer only). Already tracked here: $files. The rule doesn't apply to tracked files, so they stay tracked.",
+                        "把 $rule 加入 .git/info/exclude（只在本机生效）。其中 $tracked 个文件已在版本控制中，忽略规则对它们不生效，会继续跟踪。"),
+                    t("Ignore", "忽略"),
+                ) { _, _ -> runIgnore(entry, target) }
+            }
+        }
+    }
+
     fun entryMenu(entry: FileEntry): List<MenuEntry> {
         val file = File(root, entry.path)
         val items = ArrayList<MenuEntry>()
@@ -159,16 +200,15 @@ internal fun FilesView(
         val working = status?.working(entry.path)
         val showChanges = !entry.isDir && working != null && !working.conflicted && !entry.ignored
         val showHistory = !entry.ignored && entry.mark != FileMark.UNTRACKED && entry.mark != FileMark.ADDED && !(entry.isDir && entry.missing)
-        val canIgnore = !entry.isDir && (entry.mark == FileMark.UNTRACKED || entry.mark == FileMark.REMOVED)
+        // 已被忽略、或者文件已经在版本控制中（忽略对它不生效）的不给忽略；文件夹里有已跟踪的，点了再说明
+        val canIgnore = !entry.ignored && !entry.missing &&
+            (entry.isDir || entry.mark == FileMark.UNTRACKED || entry.mark == FileMark.REMOVED)
         if (showChanges || showHistory || canIgnore) items += MenuSeparator
         if (showChanges) items += MenuItem(t("Show changes", "查看改动")) { onShowChanges(entry.path) }
         if (showHistory) items += MenuItem(t("Show history", "查看历史")) { onShowHistory(entry.path) }
         if (canIgnore) {
-            items += MenuItem(t("Add to .gitignore", "加入 .gitignore"), enabled = !busy) {
-                onRun(t("Updating .gitignore", "正在更新 .gitignore"), t("Added ${entry.name} to .gitignore", "已将 ${entry.name} 加入 .gitignore"), {
-                    ignore(entry.path, entry.isDir)
-                }) { revision++ }
-            }
+            items += MenuItem(t("Ignore: add to .gitignore", "忽略：加入 .gitignore"), enabled = !busy) { ignoreEntry(entry, IgnoreTarget.GITIGNORE) }
+            items += MenuItem(t("Ignore locally: add to .git/info/exclude", "仅本机忽略：加入 .git/info/exclude"), enabled = !busy) { ignoreEntry(entry, IgnoreTarget.EXCLUDE) }
         }
         return items
     }
@@ -181,18 +221,15 @@ internal fun FilesView(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                CheckBox(showIgnored) {
+                val toggleIgnored = {
                     showIgnored = !showIgnored
                     Settings.updateShowIgnoredFiles(showIgnored)
                     // 正在看的目录被藏起来了，回到根目录
                     if (!showIgnored && status?.isIgnored(current) == true) open("")
                 }
+                CheckBox(if (showIgnored) CheckState.ALL else CheckState.NONE, Modifier.clickable(onClick = toggleIgnored))
                 Text(t("Show ignored", "显示忽略的"), fontSize = TypeScale.Small, color = Palette.Muted,
-                    modifier = Modifier.weight(1f).clickable {
-                        showIgnored = !showIgnored
-                        Settings.updateShowIgnoredFiles(showIgnored)
-                        if (!showIgnored && status?.isIgnored(current) == true) open("")
-                    })
+                    modifier = Modifier.weight(1f).clickable(onClick = toggleIgnored))
                 IconButton(Icons.Refresh) { revision++ }
             }
             HorizontalDivider()
@@ -291,6 +328,7 @@ internal fun FilesView(
         }
     }
     menu?.let { GitMenuPopup(it, onDismiss = { menu = null }) }
+    dialog?.let { ActionDialog(it) { dialog = null } }
 }
 
 private fun treeIndent(depth: Int): Dp = (8 + 14 * depth).dp
@@ -346,18 +384,6 @@ private fun Chevron(expanded: Boolean) {
             lineTo(c.x - arm / 2, c.y + arm)
         }
         drawPath(path, color, style = Stroke(1.5.dp.toPx()))
-    }
-}
-
-@Composable
-private fun CheckBox(checked: Boolean, onToggle: () -> Unit) {
-    val shape = RoundedCornerShape(3.dp)
-    Box(
-        Modifier.size(13.dp).background(if (checked) Palette.Accent else Palette.Field, shape).border(1.dp, if (checked) Palette.Accent else Palette.Line, shape)
-            .clickable(onClick = onToggle),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (checked) Icon(Icons.Check, Palette.OnAccent, size = 10.dp, strokeWidth = 3f)
     }
 }
 
@@ -457,20 +483,4 @@ private fun openWithSystem(file: File) {
     } else {
         java.awt.Desktop.getDesktop().open(file)
     }
-}
-
-/** 在 Finder（或系统的文件管理器）里显示并选中这个文件。 */
-private fun revealInFileManager(file: File) {
-    val desktop = java.awt.Desktop.getDesktop()
-    when {
-        isMac -> runSystem("open", "-R", file.path)
-        desktop.isSupported(java.awt.Desktop.Action.BROWSE_FILE_DIR) -> desktop.browseFileDirectory(file)
-        else -> desktop.open(if (file.isDirectory) file else file.parentFile)
-    }
-}
-
-private fun runSystem(vararg command: String) {
-    val process = ProcessBuilder(*command).redirectErrorStream(true).start()
-    val output = process.inputStream.bufferedReader().readText()
-    if (process.waitFor() != 0) error(output.trim().ifEmpty { "${command.first()} failed" })
 }

@@ -146,26 +146,96 @@ class GitCliTest {
     }
 
     @Test
-    fun `stage all and unstage all cover untracked files, deletions and an unborn repository`() {
+    fun `batch stage and unstage cover untracked files, deletions and an unborn repository`() {
         prepare()
         commit(work, "b", "b\n")
         File(work, "a").writeText("changed\n"); File(work, "b").delete(); File(work, "dir").mkdirs(); File(work, "dir/[new].txt").writeText("new\n")
         val cli = GitCli(work)
-        assertTrue(cli.stageAll().ok)
+        assertTrue(cli.stage(cli.status()).ok)
         assertTrue(cli.status().all { it.hasStaged && !it.hasUnstaged })
         assertEquals(3, cli.status().size)
-        assertTrue(cli.unstageAll().ok)
+        assertTrue(cli.unstage(cli.status()).ok)
         assertTrue(cli.status().none { it.hasStaged })
         assertEquals("changed\n", File(work, "a").readText())
 
         val fresh = File(root, "fresh").also { it.mkdirs() }
         git(fresh, "init", "-q")
         File(fresh, "one").writeText("1\n")
+        File(fresh, "two").writeText("2\n")
         val unborn = GitCli(fresh)
-        assertTrue(unborn.stageAll().ok)
-        assertTrue(unborn.status().single().hasStaged)
-        assertTrue(unborn.unstageAll().ok)
-        assertTrue(unborn.status().single().untracked)
+        assertTrue(unborn.stage(unborn.status()).ok)
+        assertTrue(unborn.status().all { it.hasStaged })
+        assertTrue(unborn.unstage(unborn.status()).ok)
+        assertTrue(unborn.status().all { it.untracked })
+    }
+
+    @Test
+    fun `batch only touches the chosen files and an empty batch does nothing`() {
+        prepare()
+        commit(work, "keep", "base\n")
+        File(work, "a").writeText("changed\n"); File(work, "keep").writeText("changed\n"); File(work, "new.txt").writeText("n\n")
+        val cli = GitCli(work)
+
+        assertTrue(cli.stage(emptyList()).ok)
+        assertTrue(cli.status().none { it.hasStaged })
+        assertTrue(cli.stage(listOf(file("a"), file("new.txt"))).ok)
+        assertEquals(setOf("a", "new.txt"), cli.status().filter { it.hasStaged }.map { it.path }.toSet())
+        assertTrue(cli.unstage(listOf(file("a"))).ok)
+        assertEquals(setOf("new.txt"), cli.status().filter { it.hasStaged }.map { it.path }.toSet())
+    }
+
+    @Test
+    fun `batch discard restores changed files and deletes new ones in one go`() {
+        prepare()
+        commit(work, "keep", "base\n")
+        commit(work, "gone", "base\n")
+        File(work, "a").writeText("changed\n"); File(work, "gone").delete()
+        File(work, "keep").writeText("untouched change\n")
+        File(work, "x1.txt").writeText("n\n"); File(work, "dir").mkdirs(); File(work, "dir/x2.txt").writeText("n\n")
+        val cli = GitCli(work)
+
+        assertTrue(cli.discard(listOf(file("a"), file("gone"), file("x1.txt"), file("dir/x2.txt"))).ok)
+        assertEquals("one\n", File(work, "a").readText())
+        assertEquals("base\n", File(work, "gone").readText())
+        assertFalse(File(work, "x1.txt").exists())
+        assertFalse(File(work, "dir/x2.txt").exists())
+        assertEquals("untouched change\n", File(work, "keep").readText())
+    }
+
+    @Test
+    fun `batch commands read glob characters literally and handle many files`() {
+        prepare()
+        commit(work, "x", "base\n")
+        File(work, "[x]").writeText("mine\n")
+        File(work, "x").writeText("do not touch\n")
+        File(work, "sp ace é.txt").writeText("s\n")
+        // 400 个新文件，比一批 git clean 能带的路径多，要分批
+        File(work, "many").mkdirs()
+        repeat(400) { File(work, "many/file-with-a-fairly-long-name-$it.txt").writeText("$it\n") }
+        val cli = GitCli(work)
+
+        assertTrue(cli.stage(listOf(file("[x]"), file("sp ace é.txt"))).ok)
+        assertEquals(setOf("[x]", "sp ace é.txt"), cli.status().filter { it.hasStaged }.map { it.path }.toSet())
+        assertTrue(cli.unstage(listOf(file("[x]"), file("sp ace é.txt"))).ok)
+
+        val batch = cli.status().filter { it.path == "[x]" || it.path.startsWith("many/") }
+        assertEquals(401, batch.size)
+        assertTrue(cli.discard(batch).ok)
+        assertFalse(File(work, "[x]").exists())
+        assertEquals(0, File(work, "many").listFiles().orEmpty().size)
+        assertEquals("do not touch\n", File(work, "x").readText())
+        assertTrue(File(work, "sp ace é.txt").exists())
+    }
+
+    @Test
+    fun `a failing batch reports the failure and leaves the later files alone`() {
+        prepare()
+        File(work, "new.txt").writeText("n\n")
+        val cli = GitCli(work)
+        val missing = WorkingFile("no-such-file", null, ' ', 'M')
+
+        assertFalse(cli.discard(listOf(missing, file("new.txt"))).ok)
+        assertTrue(File(work, "new.txt").exists())
     }
 
     @Test

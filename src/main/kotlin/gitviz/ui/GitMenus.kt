@@ -14,7 +14,6 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -330,13 +329,13 @@ internal fun ActionDialog(spec: DialogSpec, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(enabled = canConfirm, onClick = {
+            DialogButton(spec.confirm, if (spec.danger) Palette.Removed else Palette.AccentInk, canConfirm) {
                 onDismiss()
                 val option = spec.option
                 if (option != null) option.onConfirm(text.trim(), checked) else spec.onConfirm(text.trim(), mode)
-            }) { Text(spec.confirm, color = if (spec.danger) Palette.Removed else Palette.AccentInk) }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(t("Cancel", "取消"), color = Palette.Ink) } },
+        dismissButton = { DialogButton(t("Cancel", "取消"), onClick = onDismiss) },
         containerColor = Palette.Field,
         shape = RoundedCornerShape(10.dp),
     )

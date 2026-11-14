@@ -95,12 +95,12 @@ internal fun ConflictEditor(sources: ConflictSources, draft: ConflictDraft, busy
     }
     wholeChoice?.let { choice -> AlertDialog(onDismissRequest = { wholeChoice = null }, title = { Text(t("Replace the draft?", "替换当前草稿？")) },
         text = { Text(t("Use the selected whole-file version and discard this draft.", "使用所选完整版本，并放弃当前草稿。")) },
-        confirmButton = { TextButton(enabled = !busy && !stale, onClick = { wholeChoice = null; onWhole(choice) }) { Text(t("Replace", "替换")) } },
-        dismissButton = { TextButton(onClick = { wholeChoice = null }) { Text(t("Cancel", "取消")) } }) }
+        confirmButton = { DialogButton(t("Replace", "替换"), Palette.AccentInk, !busy && !stale) { wholeChoice = null; onWhole(choice) } },
+        dismissButton = { DialogButton(t("Cancel", "取消")) { wholeChoice = null } }) }
     if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, title = { Text(t("Discard the current draft?", "放弃当前草稿？")) },
         text = { Text(t("Manual edits and hunk choices will be cleared.", "手动编辑和逐块选择将被清除。")) },
-        confirmButton = { TextButton(onClick = { confirmReset = false; onReload() }) { Text(t("Discard and reload", "放弃并重新加载")) } },
-        dismissButton = { TextButton(onClick = { confirmReset = false }) { Text(t("Keep editing", "继续编辑")) } })
+        confirmButton = { DialogButton(t("Discard and reload", "放弃并重新加载"), Palette.Removed) { confirmReset = false; onReload() } },
+        dismissButton = { DialogButton(t("Keep editing", "继续编辑")) { confirmReset = false } })
 }
 
 @Composable

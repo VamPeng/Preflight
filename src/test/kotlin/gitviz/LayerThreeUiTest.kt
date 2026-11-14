@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 
 class LayerThreeUiTest {
-    @Test fun `new repository and service views render without network in both themes`() = RepositoryFixture().use { r ->
+    @Test fun `AI and interactive rebase views render without network in both themes`() = RepositoryFixture().use { r ->
         r.commit(); r.commit("b", "feature\n")
         val dark = Palette.isDark; val language = Settings.language
         val actions = GitActions({}, { _, _, _ -> }, {})
@@ -43,12 +43,32 @@ class LayerThreeUiTest {
                     }
                     finally { scene.close() }
                 }
-                render("tools") { RepositoryToolsView(r.root, r.cli, emptyList(), actions, 0, false, {}, {}, Modifier.fillMaxSize()) }
-                render("lfs", Offset(270f, 97f)) { RepositoryToolsView(r.root, r.cli, emptyList(), actions, 0, false, {}, {}, Modifier.fillMaxSize()) }
-                render("subtree", Offset(355f, 97f)) { RepositoryToolsView(r.root, r.cli, emptyList(), actions, 0, false, {}, {}, Modifier.fillMaxSize()) }
-                render("forge") { ForgeView(r.cli, Modifier.fillMaxSize()) }
-                render("ai", Offset(1000f, 261f)) { AiView(r.cli, AiScope(AiKind.BRANCH), {}, remember { AiConnection() }, remember { CommitDraft() }, actions, 0, false, {}, Modifier.fillMaxSize()) }
+                render("ai") { AiView(r.cli, remember { AiConnection() }, remember { CommitDraft() }, actions, 0, false, {}, Modifier.fillMaxSize()) }
                 render("interactive-rebase") { InteractiveRebaseDialog(r.cli, "HEAD^", false, {}, {}) }
+                Palette.toggle()
+            }
+        } finally {
+            if (Palette.isDark != dark) Palette.toggle()
+            Settings.language = language
+        }
+    }
+
+    @Test fun `compare view renders both sides and a readable error for a missing branch`() = RepositoryFixture().use { r ->
+        r.commit(); r.git("switch", "-q", "-c", "feature/login")
+        r.commit("login.kt", "fun login() = true\n"); r.commit("login.kt", "fun login() = check()\n")
+        r.git("switch", "-q", "main"); r.commit("README.md", "# Demo\n")
+        val dark = Palette.isDark; val language = Settings.language
+        Settings.language = Language.ZH
+        try {
+            repeat(2) {
+                val theme = if (Palette.isDark) "dark" else "light"
+                for ((name, branch) in listOf("compare" to "feature/login", "compare-missing" to "gone")) {
+                    val request = CompareRequest("refs/heads/main", "refs/heads/$branch", "main", branch)
+                    val scene = ImageComposeScene(1280, 720) { GitVizTheme { Surface(Modifier.fillMaxSize(), color = Palette.Ground, contentColor = Palette.Ink) {
+                        ComparisonView(r.root, request, emptyList(), {}, {}, {}, Modifier.fillMaxSize())
+                    } } }
+                    try { repeat(30) { frame -> scene.render(frame * 16_000_000L); Thread.sleep(40) }; save(scene, "$name-$theme") } finally { scene.close() }
+                }
                 Palette.toggle()
             }
         } finally {
@@ -72,7 +92,8 @@ class LayerThreeUiTest {
             }
             "HEAD~2".forEach { c -> scene.sendKeyEvent(KeyEvent(Key.Unknown, KeyEventType.Unknown, codePoint = c.code,
                 nativeEvent = java.awt.event.KeyEvent(java.awt.Canvas(), java.awt.event.KeyEvent.KEY_TYPED, 0, 0, java.awt.event.KeyEvent.VK_UNDEFINED, c))) }
-            draw(); click(990f, 175f); click(965f, 720f)
+            // 按钮是应用自己的小按钮（比 Material 的矮），位置靠截图量：加载区间在 y≈156，执行编辑在 y≈729
+            draw(); click(990f, 156f); click(965f, 729f)
             save(scene, "interactive-input")
             assertEquals(2, reviewed?.interactive?.commits?.size)
             assertEquals("third", r.git("log", "-1", "--format=%s"))

@@ -43,6 +43,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+/** 引用树下方的附加分组，比如工作树、子模块。没有内容的分组不要传进来。 */
+data class SidebarGroup(val key: String, val title: String, val entries: List<SidebarEntry>)
+data class SidebarEntry(
+    val key: String,
+    val name: String,
+    /** 名字右边的灰色小字，比如分支名、状态。 */
+    val detail: String,
+    val hint: String,
+    val current: Boolean = false,
+    /** 状态需要注意（有改动、目录缺失等）时 detail 用黄色。 */
+    val warning: Boolean = false,
+    val onOpen: () -> Unit = {},
+    val onMenu: () -> Unit = {},
+)
+
 private val Sections get() = listOf(t("Branches", "本地分支") to RefKind.BRANCH, t("Remotes", "远程") to RefKind.REMOTE, t("Tags", "标签") to RefKind.TAG)
 
 /** 左侧引用树。点引用跳到它指向的提交，提交还没加载时会先加载到它。 */
@@ -59,6 +74,7 @@ fun RefSidebar(
     branchColors: BranchColors = BranchColors.None,
     /** 鼠标移到某个引用上、移开（null）时通知，图上据此高亮那条分支。 */
     onHover: (RefTarget?) -> Unit = {},
+    groups: List<SidebarGroup> = emptyList(),
 ) {
     var collapsed by remember { mutableStateOf(setOf("${RefKind.TAG}:")) } // 标签通常很多，默认收起
     val filtering = filter.isNotBlank()
@@ -120,6 +136,14 @@ fun RefSidebar(
                         }
                     }
                 }
+            }
+            groups.forEach { group ->
+                val entries = if (filtering) group.entries.filter { it.name.contains(filter.trim(), ignoreCase = true) } else group.entries
+                if (filtering && entries.isEmpty()) return@forEach
+                val sectionKey = "group:${group.key}"
+                val expanded = filtering || sectionKey !in collapsed
+                item(key = sectionKey) { SectionHeader(group.title, entries.size, expanded, onClick = { toggle(sectionKey) }) }
+                if (expanded) items(entries, key = { "$sectionKey/${it.key}" }) { GroupEntryRow(it) }
             }
         }
         VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
@@ -198,6 +222,35 @@ private fun RefLeafRow(
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
             color = if (current) Palette.AccentInk else colors.onSurface,
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GroupEntryRow(entry: SidebarEntry) {
+    Hint(entry.hint) {
+        Row(
+            Modifier.fillMaxWidth().height(25.dp)
+                .onRightClick(entry.onMenu)
+                .combinedClickable(onClick = {}, onDoubleClick = entry.onOpen)
+                .indented(0),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // 当前所在的工作树用实心点标出，和当前分支一样
+            Canvas(Modifier.width(14.dp).height(10.dp)) {
+                if (entry.current) drawCircle(Palette.Accent, 3.5.dp.toPx(), Offset(4.dp.toPx(), size.height / 2))
+            }
+            Text(
+                entry.name, fontSize = TypeScale.Body, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                fontWeight = if (entry.current) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (entry.current) Palette.AccentInk else MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                entry.detail, fontSize = TypeScale.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (entry.warning) Palette.Modified else Palette.Faint, modifier = Modifier.widthIn(max = 110.dp),
+            )
+        }
     }
 }
 

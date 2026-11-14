@@ -1,5 +1,6 @@
 package gitviz.ui
 
+import gitviz.logic.CheckState
 import gitviz.service.*
 import gitviz.ui.history.*
 import androidx.compose.foundation.Canvas
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -72,12 +74,18 @@ object Icons {
     const val Moon = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"
     const val ChevronDown = "M6 9l6 6 6-6"
     const val ChevronUp = "M6 15l6-6 6 6"
+    const val ChevronLeft = "M15 18l-6-6 6-6"
+    const val Swap = "M7 4L3 8l4 4 M3 8h14 M17 20l4-4-4-4 M21 16H7"
     const val Check = "M20 6L9 17l-5-5"
     const val Settings = "M4 7h10 M18 7h2 M4 17h2 M10 17h10 M16 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8 20a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
     const val Edit = "M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"
     const val Folder = "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-    const val Wrench = "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"
     const val File = "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6"
+    /** 三个点，用粗线加圆头画成圆点。 */
+    const val More = "M5 12h.01 M12 12h.01 M19 12h.01"
+    const val List = "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01"
+    const val ExpandAll = "M7 15l5 5 5-5 M7 9l5-5 5 5"
+    const val CollapseAll = "M7 20l5-5 5 5 M7 4l5 5 5-5"
 }
 
 @Composable
@@ -217,4 +225,33 @@ internal fun ScrollList(
         LazyColumn(Modifier.fillMaxSize().padding(end = 10.dp), state = state, contentPadding = contentPadding, content = content)
         VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
     }
+}
+
+/** 勾选框。只负责画；点击由外面的一整块区域处理，这样点中旁边的空白也算。部分选中时画一横。 */
+@Composable
+fun CheckBox(state: CheckState, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(3.dp)
+    val on = state != CheckState.NONE
+    Box(
+        modifier.size(13.dp).background(if (on) Palette.Accent else Palette.Field, shape).border(1.dp, if (on) Palette.Accent else Palette.Line, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (state) {
+            CheckState.ALL -> Icon(Icons.Check, Palette.OnAccent, size = 10.dp, strokeWidth = 3f)
+            CheckState.SOME -> Box(Modifier.size(width = 7.dp, height = 2.dp).background(Palette.OnAccent, RoundedCornerShape(1.dp)))
+            CheckState.NONE -> {}
+        }
+    }
+}
+
+/** 对话框底部的文字按钮：和应用里其他按钮一样的小圆角，悬停时只加一层淡底色，不用 Material 的胶囊形。 */
+@Composable
+fun DialogButton(label: String, color: Color = Palette.Ink, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        label, fontSize = TypeScale.Body, color = color, maxLines = 1,
+        modifier = Modifier.alpha(if (enabled) 1f else 0.45f).clip(RoundedCornerShape(5.dp))
+            .then(if (enabled) Modifier.hoverRow() else Modifier)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }

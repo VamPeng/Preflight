@@ -38,12 +38,12 @@ import kotlinx.coroutines.*
         Column(Modifier.size(980.dp, 720.dp).background(Palette.Panel).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(t("Interactive rebase", "交互式变基"), fontSize = TypeScale.Title, modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss, enabled = !busy) { Text(t("Close", "关闭")) }
+                DialogButton(t("Close", "关闭"), enabled = !busy, onClick = onDismiss)
             }
             Text(t("Edit commits after the base, oldest first. Only a clean current local branch and a linear range are supported. Published commits will get new IDs; no push is performed.", "编辑基准之后的提交，最早的排在前面。仅支持干净工作区、当前本地分支和线性区间；已发布提交会产生新 ID，不会自动推送。"), fontSize = TypeScale.Small, color = Palette.Muted)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(base, { base = it }, label = { Text(t("Base (excluded)", "基准（不包含）")) }, singleLine = true, enabled = !busy, modifier = Modifier.weight(1f).textInputFocus())
-                TextButton(enabled = !busy && base.isNotBlank(), onClick = { requested = base.trim() to (requested.second + 1) }) { Text(t("Load range", "加载区间")) }
+                DialogButton(t("Load range", "加载区间"), Palette.AccentInk, !busy && base.isNotBlank()) { requested = base.trim() to (requested.second + 1) }
             }
             when {
                 source == null -> Message(t("Loading commits…", "正在加载提交…"), Modifier.fillMaxWidth().weight(1f))
@@ -55,9 +55,9 @@ import kotlinx.coroutines.*
                             val commit = original.commits.first { it.id == edit.id }
                             Column(Modifier.fillMaxWidth().background(Palette.Ground).padding(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(enabled = !busy && index > 0, onClick = { edits = edits.toMutableList().apply { add(index - 1, removeAt(index)) } }) { Text("↑") }
-                                    TextButton(enabled = !busy && index < edits.lastIndex, onClick = { edits = edits.toMutableList().apply { add(index + 1, removeAt(index)) } }) { Text("↓") }
-                                    TextButton(enabled = !busy, onClick = { actionMenu = edit.id }) { Text(edit.action.name.lowercase()) }
+                                    DialogButton("↑", enabled = !busy && index > 0) { edits = edits.toMutableList().apply { add(index - 1, removeAt(index)) } }
+                                    DialogButton("↓", enabled = !busy && index < edits.lastIndex) { edits = edits.toMutableList().apply { add(index + 1, removeAt(index)) } }
+                                    DialogButton(edit.action.name.lowercase(), Palette.AccentInk, !busy) { actionMenu = edit.id }
                                     Text(commit.shortId, fontFamily = CodeFont, fontSize = TypeScale.Small, modifier = Modifier.padding(end = 10.dp))
                                     Text(commit.shortMessage, fontSize = TypeScale.Body, color = if (edit.action == RebaseAction.DROP) Palette.Removed else Palette.Ink, modifier = Modifier.weight(1f))
                                 }
@@ -68,10 +68,10 @@ import kotlinx.coroutines.*
                     Text(t("squash combines messages; fixup keeps the preceding message; drop removes the commit. Move rows with ↑/↓.", "squash 合并提交说明；fixup 保留前一个说明；drop 丢弃提交。用 ↑/↓ 调整顺序。"), fontSize = TypeScale.Small, color = Palette.Muted)
                     error?.let { Text(it, color = Palette.Removed, fontSize = TypeScale.Small) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(enabled = !busy && error == null && base.trim() == requested.first, onClick = {
+                        DialogButton(t("Apply edits", "执行编辑"), Palette.AccentInk, !busy && error == null && base.trim() == requested.first) {
                             val reviewed = checkNotNull(plan)
                             onPreview(OperationIntent(PreviewKind.REBASE, reviewed.base, expectedHead = reviewed.head, interactive = reviewed))
-                        }) { Text(t("Apply edits", "执行编辑")) }
+                        }
                     }
                 }
             }

@@ -309,17 +309,27 @@ internal fun formatSize(bytes: Long): String = when {
     else -> "%.1f GB".format(java.util.Locale.ROOT, bytes / (1024.0 * 1024 * 1024))
 }
 
-/**
- * 把 path 加进工作区根目录的 .gitignore。用 / 开头锚定到这一个路径，目录末尾加 /，
- * 免得同名的其他文件也被忽略。文件没以换行结尾时先补一个。
- */
-internal fun appendToGitignore(root: File, path: String, isDir: Boolean) {
-    val file = File(root, ".gitignore")
-    // 前面有 / 了，# 和 ! 不会被当成注释或取反；通配符和末尾空格要转义，才是按字面匹配
+/** 忽略规则写到哪里：.gitignore 会提交、大家共用；.git/info/exclude 只在这台电脑上生效。 */
+enum class IgnoreTarget { GITIGNORE, EXCLUDE }
+
+/** 一条锚定到这一个路径的忽略规则：/ 开头，目录末尾加 /，通配符和末尾空格转义成字面。 */
+internal fun ignoreRule(path: String, isDir: Boolean): String {
+    // 前面有 / 了，# 和 ! 不会被当成注释或取反
     val escaped = path.replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?").replace("[", "\\[")
         .let { if (it.endsWith(" ")) it.dropLast(1) + "\\ " else it }
-    val line = "/$escaped" + if (isDir) "/" else ""
+    return "/$escaped" + if (isDir) "/" else ""
+}
+
+/**
+ * 把这些路径的规则追加到忽略文件末尾，文件没以换行结尾时先补一个。文件或所在目录不存在就创建。
+ * 已经有一模一样的规则就不再加。
+ */
+internal fun appendIgnoreRules(file: File, paths: List<String>, isDir: Boolean) {
     val existing = if (file.isFile) file.readText() else ""
+    val present = existing.lineSequence().map { it.trimEnd('\r') }.toHashSet()
+    val lines = paths.map { ignoreRule(it, isDir) }.distinct().filter { it !in present }
+    if (lines.isEmpty()) return
+    file.parentFile?.mkdirs()
     val prefix = if (existing.isNotEmpty() && !existing.endsWith("\n")) "\n" else ""
-    file.appendText(prefix + line + "\n")
+    file.appendText(prefix + lines.joinToString("") { it + "\n" })
 }

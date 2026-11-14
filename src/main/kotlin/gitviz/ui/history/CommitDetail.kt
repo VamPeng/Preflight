@@ -218,7 +218,7 @@ private fun ChangedFiles(
 }
 
 @Composable
-private fun FileRow(f: FileChange, selected: Boolean, onSelect: (FileChange) -> Unit) {
+internal fun FileRow(f: FileChange, selected: Boolean, onSelect: (FileChange) -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(30.dp).hoverRow().rowHighlight(selected).clickable { onSelect(f) }.padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

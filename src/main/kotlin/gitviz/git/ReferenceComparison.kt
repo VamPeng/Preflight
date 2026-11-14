@@ -11,8 +11,8 @@ import java.io.File
 internal data class CompareRequest(val left: String, val right: String, val leftLabel: String = left, val rightLabel: String = right, val generation: Int = 0)
 internal data class ComparePage(val commits: List<CommitInfo>, val hasMore: Boolean)
 internal class ComparisonSession private constructor(val repo: GitRepo, val request: CompareRequest) : AutoCloseable {
-    val a = repo.repository.resolve("${request.left}^{commit}")?.name ?: error("Invalid reference: ${request.left}")
-    val b = repo.repository.resolve("${request.right}^{commit}")?.name ?: error("Invalid reference: ${request.right}")
+    val a = repo.repository.resolve("${request.left}^{commit}")?.name ?: error(t("${request.leftLabel} not found", "找不到 ${request.leftLabel}"))
+    val b = repo.repository.resolve("${request.right}^{commit}")?.name ?: error(t("${request.rightLabel} not found", "找不到 ${request.rightLabel}"))
     init { check(GitCli(repo.workTree ?: repo.repository.directory).read("rev-parse", "--is-shallow-repository").trim() == "false") { t("Comparison needs complete history; shallow repository cannot determine all ancestors.", "对比需要完整历史；浅仓库无法确定全部祖先。") } }
     val counts = GitCli(repo.workTree ?: repo.repository.directory).read("rev-list", "--left-right", "--count", "$a...$b").trim().split(Regex("\\s+")).map { it.toLong() }
     val bases: List<String> = RevWalk(repo.repository).use { walk ->

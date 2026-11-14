@@ -68,6 +68,24 @@ internal object Settings {
         prefs.putBoolean("showIgnoredFiles", value)
     }
 
+    /** 改动页的文件按文件夹分层显示；否则一个文件一行。 */
+    var changesAsTree by mutableStateOf(prefs.getBoolean("changesTree", false))
+        internal set
+
+    fun updateChangesAsTree(value: Boolean) {
+        changesAsTree = value
+        prefs.putBoolean("changesTree", value)
+    }
+
+    /** 改动页左栏的宽度（dp）。显示时再按窗口大小收到允许的范围里。 */
+    var changesWidth by mutableStateOf(prefs.getInt("changesWidth", 340))
+        private set
+
+    fun updateChangesWidth(value: Int) {
+        changesWidth = value
+        prefs.putInt("changesWidth", value)
+    }
+
     private var recent by mutableStateOf(prefs.get("recentRepos", "").split(PathSeparator).filter { it.isNotEmpty() })
 
     /** 最近打开的仓库，已经不存在的不显示。 */

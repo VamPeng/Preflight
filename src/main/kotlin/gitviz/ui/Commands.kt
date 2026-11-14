@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -21,7 +20,7 @@ import androidx.compose.ui.unit.dp
 internal data class AppCommand(val id: String, val title: String, val enabled: Boolean, val hint: String = "", val action: () -> Unit)
 /** Temporarily shelved product entry points; implementations remain available internally. */
 internal object FeatureVisibility {
-    private val hidden = setOf("ai", "replay", "forge", "reflog")
+    private val hidden = setOf("ai", "reflog")
     fun visible(id: String): Boolean = id !in hidden
 }
 internal class CommandRegistry(commands: List<AppCommand>) {
@@ -73,6 +72,6 @@ internal fun shortcutCommand(key: Key, primary: Boolean, shift: Boolean, editing
                 } }
             }
         }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text(t("Close", "关闭")) } })
+    }, confirmButton = {}, dismissButton = { DialogButton(t("Close", "关闭"), onClick = onDismiss) })
     LaunchedEffect(Unit) { focus.requestFocus() }
 }

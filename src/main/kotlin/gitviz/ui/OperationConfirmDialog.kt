@@ -10,7 +10,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,11 +99,9 @@ internal fun OperationConfirmDialog(cli: GitCli, intent: OperationIntent, curren
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy && plan != null, onClick = { plan?.let(onExecute) }) {
-                Text(confirm, color = if (danger) Palette.Removed else Palette.AccentInk)
-            }
+            DialogButton(confirm, if (danger) Palette.Removed else Palette.AccentInk, !busy && plan != null) { plan?.let(onExecute) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(t("Cancel", "取消"), color = Palette.Ink) } },
+        dismissButton = { DialogButton(t("Cancel", "取消"), enabled = !busy, onClick = onDismiss) },
         containerColor = Palette.Field,
         shape = RoundedCornerShape(10.dp),
     )

@@ -6,7 +6,7 @@ import kotlin.test.*
 class CommandsTest {
     @Test fun `shelved features have no regular command while core commands remain available`() {
         var calls = 0
-        val hidden = listOf("ai", "replay", "forge", "reflog")
+        val hidden = listOf("ai", "reflog")
         val registry = CommandRegistry((hidden + "refresh").map { AppCommand(it, it, true) { calls++ } })
         hidden.forEach { assertFalse(registry.execute(it)) }
         assertEquals(listOf("refresh"), registry.commands.map { it.id })

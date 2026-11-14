@@ -8,21 +8,21 @@ Kotlin + Compose Desktop + JGit 写的 git 可视化客户端，还在开发中�
 - 教学模式：设置中开启，在操作反馈里查看和复制对应 Git 命令与说明
 - 统计和洞察：提交热力图、贡献者和热点文件；完整本地历史去重扫描，可选时间范围、刷新或取消
 - 交互式 rebase：从提交右键或命令面板进入，编辑线性区间的顺序、说明、合并和删除；编辑后直接执行，可继续或中止
-- 仓库工具 Beta（功能菜单末尾的扳手图标，页内标注「开发中」）：Worktree 创建／打开／移除，已配置 Submodule 初始化／更新，LFS 状态和手动下载，subtree 添加／更新，以及引用对比
+- 工作树和子模块：有多个工作树或配置了子模块时，侧边栏引用树下方出现「工作树」「子模块」分组。工作树可打开、在 Finder 中显示、复制路径、移除；分支右键「在新工作树中检出…」（远程分支会检出为跟踪它的本地分支，本地已有同名分支就直接用）。子模块可初始化并更新、更新到记录的提交、打开
 - 打开本地仓库（启动目录是仓库会自动打开，也可以点「打开仓库」选择）
 - 左侧引用树：本地分支、远程、标签，点击跳到对应提交
 - 工具栏搜索：同时搜提交、作者、哈希、分支和标签
 - 带分支图的提交历史：分支、远程分支、标签、HEAD 标记
 - 底部浮层详情：默认选中第一条提交；首次上滑显示，切换提交直接刷新；顶部箭头展开覆盖整个主区域/收起、拖动顶边调高，列表尾部留白避免遮挡。点文件看 diff（统一或并排，带行号）、文件历史和 Blame
 - 浅色和深色主题，配色是石墨橙，在设置页切换
-- 本地改动：暂存、取消暂存（单个或全部）、丢弃、提交、修改上一次提交，文件有变化时自动刷新工作区
+- 本地改动：每个文件右边一个勾选框，列表底栏的 ⋯ 菜单批量暂存、取消暂存、丢弃（丢弃前确认）；可在平铺和按文件夹之间切换，文件夹勾选带上它下面的所有文件；列表可左右滑动、左栏宽度可拖动；提交、修改上一次提交，文件有变化时自动刷新工作区
 - 拉取和推送：调用系统的 git，沿用现有的 SSH 和钥匙串配置；推送被拒绝时可以强制推送（`--force-with-lease`），进行中的获取、拉取、推送可以取消
 - 操作反馈：蓝色进度、绿色成功、黄色需处理、红色失败；成功 5 秒后收起（悬停或展开详情时保留），错误手动关闭，详情可展开和复制，失败可按提示重试或处理冲突
 - 身份验证：要密码时由 git 和 ssh 弹出 macOS 系统对话框，密码不经过应用，也不保存
 - 仓库：工具栏切换最近的仓库、打开或克隆新仓库
 - 写操作保护：同一仓库的写操作串行执行，多个 GitViz 进程互斥；写操作前不做备份，误操作通过 reflog 找回提交
 - Blame 追溯：来源路径／行号、上一版本区间、合并父选择、重命名和删除前历史，保留前后导航位置
-- 引用对比：从「仓库工具 → 引用对比」进入；双向独有提交独立分页，固定解析时 OID；文件支持共同祖先或端点比较，支持交换方向与刷新
+- 比较分支：分支右键「与 main 比较」（当前分支名），列出两边各自独有的提交（独立分页，点击跳回历史）和文件差异；文件可从共同祖先或直接比较两端，可交换方向；分支移动后自动重新解析
 - 获取与拉取：独立 fetch，pull 支持 merge／rebase／ff-only；有上游时点一下完成，无上游时先选择，策略和上游在「拉取设置…」里改并按仓库保存
 - 键盘：列表 j/k、上下键、Enter；Cmd/Ctrl+F 搜索、+R 刷新、+Enter 提交、+Shift+P 命令面板；工具栏的拉取、推送右键可进入拉取设置和强制推送
 - Diff 高亮：Kotlin、Java、JavaScript、TypeScript、JSON、Python；后台按完整旧／新源码分词，单侧超过 1 MiB 或 20,000 行回退纯文本，缓存上限 32 MiB
@@ -40,17 +40,15 @@ Kotlin + Compose Desktop + JGit 写的 git 可视化客户端，还在开发中�
 
 ## 第三层功能的使用边界
 
-AI、时间轴回放、托管平台和 Reflog 暂时隐藏日常入口，保留实现及数据，待打磨后再开放。下述时间轴、平台和 AI 说明保留作后续开放参考。
+AI 提交草稿和 Reflog 暂时隐藏日常入口，保留实现，待打磨后再开放。时间轴回放、托管平台（GitHub／GitLab）、Subtree、LFS 页和 AI 分支总结已于 2026-11-13 删除，需要时从 git 历史找回。
 
-各功能的设计、验证与剩余联调项见 [docs/PLAN.md](docs/PLAN.md)。时间轴最多载入 100,000 条提交，图中显示最近展开的 2,000 条；图上的分支名代表当前引用。交互式 rebase 只编辑当前本地分支的线性区间，最多 500 条，基准提交本身不参与编辑。
+各功能的设计、验证与剩余联调项见 [docs/PLAN.md](docs/PLAN.md)。交互式 rebase 只编辑当前本地分支的线性区间，最多 500 条，基准提交本身不参与编辑。
 
-仓库工具只在手动操作时写入。Worktree 移除不会删除分支，也不允许移除含忽略文件或其他本地改动的目录；存在 `assume-unchanged`／`skip-worktree` 索引标志时，即使表面干净也拒绝移除，需先检查文件并处理标志。Submodule 更新到父仓库暂存区记录的提交，默认不递归；已初始化子模块更新前保留 `refs/gitviz/submodule-before/…`，恢复需在子模块内处理。Subtree 默认 squash。LFS 需要系统安装 `git-lfs`，不自动安装或下载；对象缓存可用状态按文件存在及大小检查，不表示内容哈希已校验。
+工作树和子模块只在手动操作时写入。工作树移除不会删除分支，也不允许移除含忽略文件或其他本地改动的目录；存在 `assume-unchanged`／`skip-worktree` 索引标志时，即使表面干净也拒绝移除，需先检查文件并处理标志。目录已被手动删除的工作树标为「目录缺失」，不在应用里移除，可在终端运行 `git worktree prune` 清理记录。子模块更新到父仓库暂存区记录的提交，默认不递归；已初始化子模块更新前保留 `refs/gitviz/submodule-before/…`，恢复需在子模块内处理。Diff 遇到 Git LFS 指针文件时只显示指针信息，不读取大对象。
 
-托管平台需要选择服务地址和项目，私有项目需填写令牌；令牌只保留在当前页面会话，离开页面或更换主机会清除。平台页只在点击刷新或翻页时访问服务，不自动读取其他应用的账户。
+AI 需要手动开启，填写模型、完整 API 端点和令牌，选择 Responses API 或 Chat Completions 兼容协议。连接仅保存在应用会话中，更换端点会清除令牌。准备快照不会发送请求；检查／编辑输入并勾选发送确认后，点击生成才会发送到所选服务，可能产生服务费用。提交草稿仅使用暂存内容。单次最多 200 个差异路径、每个文本 blob 64 KiB、输入 120,000 字符，省略部分会明确标注。已有草稿需确认替换，结果不会自动执行 Git 操作。
 
-AI 需要手动开启，填写模型、完整 API 端点和令牌，选择 Responses API 或 Chat Completions 兼容协议。连接仅保存在应用会话中，更换端点会清除令牌。准备快照不会发送请求；检查／编辑输入并勾选发送确认后，点击生成才会发送到所选服务，可能产生服务费用。提交草稿仅使用暂存内容；分支摘要可从引用对比页进入。单次最多 200 个差异路径、每个文本 blob 64 KiB、输入 120,000 字符、分支提交摘要 100 条，省略部分会明确标注。已有草稿需确认替换，结果不会自动执行 Git 操作。
-
-GitHub／GitLab、AI 协议、超时与取消已完成本地测试；真实账户／模型服务尚未联调。本机未安装 git-lfs，真实 LFS 下载尚未验证。
+AI 协议、超时与取消已完成本地测试；真实模型服务尚未联调。
 
 ## 运行
 需要 JDK 17–21（Android Studio 自带的 JBR 21 就行）和 Git。
@@ -96,20 +94,21 @@ open "/Applications/GitViz Dev.app"
 | | `GitCli.kt` | 调用系统 git 执行所有写操作 |
 | | `GitProcess.kt`、`Operations.kt` | 字节输入输出、执行结果核对、仓库写入协调与操作事务 |
 | | `OperationPreview.kt`、`Rebase.kt` | 操作前的只读后果摘要与直接执行、rebase 暂停流程 |
-| | `ReferenceComparison.kt`、`BlameTrace.kt` | 固定 OID 的引用对比与来源行连续追溯 |
+| | `ReferenceComparison.kt`、`BlameTrace.kt` | 固定 OID 的分支比较与来源行连续追溯 |
 | | `PatchDocument.kt` | 完整补丁与部分暂存 |
 | | `Conflicts.kt`、`ConflictSources.kt` | 解析冲突标记、冲突各方的来源 |
 | | `Teaching.kt` | 关键操作命令记录、解释与敏感参数脱敏 |
-| | `Insights.kt`、`Replay.kt`、`InteractiveRebase.kt`、`Pull.kt` | 历史统计、固定历史快照、线性提交编辑与受控 todo、拉取策略 |
-| | `Worktrees.kt`、`Submodules.kt`、`Lfs.kt`、`Subtrees.kt` | 扩展仓库工具及其操作边界 |
+| | `Insights.kt`、`InteractiveRebase.kt`、`Pull.kt` | 历史统计、线性提交编辑与受控 todo、拉取策略 |
+| | `Worktrees.kt`、`Submodules.kt`、`Lfs.kt` | 工作树、子模块及其操作边界；LFS 指针识别 |
 | | `TemporaryFiles.kt` | 清理临时文件，不跟随符号链接 |
 | `logic/` | `GraphLayout.kt` | 分支图布局：给每个提交分配列，算出线怎么连 |
 | | `DiffLines.kt`、`DiffHighlight.kt` | 给 diff 逐行分类；完整源码分词和高亮缓存 |
 | | `RefTree.kt`、`FileTree.kt` | 把引用名按 `/` 拆成树；读工作区目录和每个文件的 git 状态 |
-| `service/` | `Forge.kt`、`ServiceHttp.kt` | 托管平台只读适配与有超时、大小限制和取消的 HTTP 请求 |
+| | `ChangeTree.kt` | 改动文件按文件夹分层、合并中间层、收起，以及勾选状态 |
+| `service/` | `ServiceHttp.kt` | 有超时、大小限制和取消的 HTTP 请求 |
 | | `Ai.kt` | 受限改动快照、模型协议 |
 | `platform/` | `Vibrancy.kt`、`WindowSize.kt` | macOS 毛玻璃窗口、窗口尺寸保存与恢复 |
-| | `WorkTreeWatcher.kt`、`DirectoryChooser.kt` | 工作区文件监听、系统目录选择框 |
+| | `WorkTreeWatcher.kt`、`DirectoryChooser.kt`、`FileManager.kt` | 工作区文件监听、系统目录选择框、在 Finder 中显示 |
 | `ui/` | `Theme.kt`、`Components.kt`、`Logo.kt` | 浅色和深色配色、字号、字体；图标、按钮、头像这些通用组件 |
 | | `AppBars.kt`、`Welcome.kt` | 工具栏、搜索框、侧边栏条目、状态栏；欢迎页 |
 | | `Commands.kt` | 共享命令可用状态和快捷键 |
@@ -119,14 +118,14 @@ open "/Applications/GitViz Dev.app"
 | `ui/history/` | `CommitList.kt`、`GraphCell.kt` | 提交列表、每一行的分支图 |
 | | `CommitHistoryLayout.kt`、`CommitHistoryScrollbar.kt` | 提交列表底层、可展开和拖动的底部详情浮层、滚动条 |
 | | `CommitDetail.kt` | 提交详情、diff、文件历史、Blame |
-| | `Sidebar.kt`、`BranchFilterBar.kt`、`BranchDrag.kt` | 左侧引用树面板、分支过滤、分支拖拽 |
-| `ui/changes/` | `ChangesView.kt`、`PartialStageView.kt` | 本地改动、提交说明、按行暂存 |
+| | `Sidebar.kt`、`SidebarGroups.kt`、`BranchFilterBar.kt`、`BranchDrag.kt` | 左侧引用树面板、工作树和子模块分组、分支过滤、分支拖拽 |
+| `ui/changes/` | `ChangesView.kt`、`PartialStageView.kt` | 本地改动（勾选、批量操作、平铺／按文件夹）、提交说明、按行暂存 |
 | | `StashView.kt` | 储藏列表和内容 |
 | | `ConflictView.kt`、`ConflictEditor.kt` | 解决冲突的界面 |
 | `ui/tools/` | `FilesView.kt`、`ReflogView.kt` | 文件页、引用日志 |
-| | `InsightsView.kt`、`ReplayView.kt`、`InteractiveRebaseView.kt` | 洞察、历史回放、交互式变基 |
-| | `RepositoryToolsView.kt`、`ComparisonView.kt`、`BlameTraceView.kt`、`PullDialog.kt` | 仓库工具、引用对比、来源追溯、拉取选项 |
-| | `ForgeView.kt`、`AiView.kt` | 托管平台面板、AI 草稿与发送确认 |
+| | `InsightsView.kt`、`InteractiveRebaseView.kt` | 洞察、交互式变基 |
+| | `ComparisonView.kt`、`BlameTraceView.kt`、`PullDialog.kt` | 分支比较、来源追溯、拉取选项 |
+| | `AiView.kt` | AI 提交草稿与发送确认 |
 
 界面原型在 `docs/prototype/`，改界面前先看那里。`ScreenshotTest` 会把主界面渲染成图片存到 `build/screens/`。
 
