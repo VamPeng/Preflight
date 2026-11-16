@@ -150,7 +150,7 @@ internal fun askNewBranch(start: String, from: String, a: GitActions) {
     a.ask(DialogSpec(t("New branch", "新建分支"), t("Create a branch from $from.", "从 $from 创建分支。"), t("Create branch", "创建分支"), input = t("Branch name", "分支名"), option = option))
 }
 
-internal fun branchMenu(name: String, tip: String, isCurrent: Boolean, target: String?, a: GitActions): List<MenuEntry> = listOf(
+internal fun branchMenu(name: String, tip: String, isCurrent: Boolean, target: String?, a: GitActions, hasUpstream: Boolean = true, hasRemote: Boolean = true, onPush: (force: Boolean) -> Unit = {}): List<MenuEntry> = listOf(
     MenuItem(t("Switch to this branch", "切换到这个分支"), enabled = !isCurrent) {
         a.run(t("Switching", "正在切换"), t("Switched to $name", "已切换到 $name")) { switchTo(name) }
     },
@@ -163,6 +163,10 @@ internal fun branchMenu(name: String, tip: String, isCurrent: Boolean, target: S
     MenuItem(t("Rebase current branch onto this…", "将当前分支变基到这里…"), enabled = !isCurrent && target != null) {
         a.preview(OperationIntent(PreviewKind.REBASE, "refs/heads/$name"))
     },
+    MenuSeparator,
+    // 不用先切过去：直接把这个分支推出去；没有上游就推到 origin 并设为上游
+    MenuItem(if (hasUpstream) t("Push $name", "推送 $name") else t("Push and set upstream (origin)", "推送并设置上游（origin）"), enabled = hasRemote) { onPush(false) },
+    MenuItem(t("Force push…", "强制推送…"), enabled = hasRemote && hasUpstream, danger = true) { onPush(true) },
     MenuSeparator,
     MenuItem(t("Rename…", "重命名…"), enabled = !isCurrent) {
         a.ask(DialogSpec(t("Rename branch", "重命名分支"), t("Give $name a new name.", "把 $name 改成新的名字。"), t("Rename", "重命名"), input = t("New branch name", "新分支名"), initial = name) { to, _ ->

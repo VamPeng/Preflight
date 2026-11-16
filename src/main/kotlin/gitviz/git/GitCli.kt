@@ -152,6 +152,21 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
      * 推送当前分支；没有上游时设到 origin，以后直接 git push 也能用。
      * force 用 --force-with-lease：只有远程分支还是上次获取时的样子才覆盖，别人新推的提交不会被冲掉。
      */
+    /**
+     * 推送指定的本地分支，不切换当前分支：有上游就推到上游（可以是别的远程、别的名字），没有就推到 origin 并设为上游。
+     * 只推这一个分支的引用，不依赖 push.default。
+     */
+    fun pushBranch(branch: String, force: Boolean = false): GitResult {
+        if (capture("rev-parse", "-q", "--verify", "refs/heads/$branch") == null)
+            return GitResult(GitFailure.OTHER, t("Branch $branch doesn't exist", "分支 $branch 不存在"))
+        val flags = if (force) arrayOf("--force-with-lease") else emptyArray()
+        val remote = config("branch.$branch.remote")?.takeIf { it.isNotBlank() && it != "." }
+        val merge = config("branch.$branch.merge")?.takeIf { it.startsWith("refs/heads/") }
+        if (remote != null && merge != null) return network("push", *flags, remote, "refs/heads/$branch:$merge")
+        if ("origin" !in read("remote").lines()) return GitResult(GitFailure.OTHER, t("This repository has no remote named origin to push to", "这个仓库没有名为 origin 的远程，无法推送"))
+        return network("push", *flags, "-u", "origin", "refs/heads/$branch:refs/heads/$branch")
+    }
+
     fun push(force: Boolean = false): GitResult {
         val branch = capture("symbolic-ref", "--short", "-q", "HEAD")
             ?: return GitResult(GitFailure.OTHER, t("Not on any branch, so there's nothing to push", "现在不在任何分支上，无法推送"))

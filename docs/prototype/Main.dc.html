@@ -1146,6 +1146,10 @@ class Component extends DCLogic {
       item(mergeTo, openBranch('merge', ''), { off: onCurrent }),
       item('将当前分支变基到这里…', openBranch('rebase', ''), { off: onCurrent }),
       sep,
+      // 不用先切过去：直接把这个分支推到它的上游；没有上游就推到 origin 并设为上游
+      item(tips[menuBranch] === '5e0ac13' ? '推送并设置上游（origin）' : '推送到 origin/' + nameOf(menuBranch || ''), () => flash('已推送 ' + nameOf(menuBranch) + '，当前仍在 ' + s.current, { ctx: null })),
+      item('强制推送…', () => flash('会先弹出确认：用本地覆盖远程（--force-with-lease）', { ctx: null }), { danger: true }),
+      sep,
       // 原「仓库工具 → 引用对比」：从分支直接比较，不再单独找入口
       item('与 ' + s.current + ' 比较', () => set({ ctx: null, view: 'compare', cmp: menuBranch, cmpBase: 'ancestor' }), { off: onCurrent }),
       item('在新工作树中检出…', openBranch('worktree', '~/Desktop/pro/gitviz-' + (menuBranch || '').split('/').pop()), { off: onCurrent || s.worktrees.some((w) => w.branch === menuBranch) }),

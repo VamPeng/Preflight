@@ -518,6 +518,22 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         }
     }
 
+    /** 右键分支推送：不切换分支。推当前分支时和工具栏按钮一样；推别的分支失败时，「先拉取」「重试」这些按钮针对的是当前分支，不能给。 */
+    fun runBranchPush(branch: String, force: Boolean, confirmed: Boolean = false) {
+        val here = s?.result?.refs?.firstOrNull { it.label.kind == RefKind.BRANCH && it.label.isCurrent }?.label?.name
+        if (branch == here) { runNet(if (force) NetOp.FORCE_PUSH else NetOp.PUSH, confirmed); return }
+        if (force && !confirmed) {
+            dialog = DialogSpec(t("Force push $branch", "强制推送 $branch"),
+                t("Replace the remote branch with your local $branch. Commits that exist only on the remote branch will be removed from it. Git refuses if the remote changed since your last fetch. Your current branch is not changed.", "用本地的 $branch 覆盖远程分支，只存在于远程分支上的提交会从它上面消失。如果远程在你上次获取之后又变了，Git 会拒绝。当前所在的分支不受影响。"),
+                t("Force push", "强制推送"), danger = true) { _, _ -> runBranchPush(branch, true, confirmed = true) }
+            return
+        }
+        val op = if (force) NetOp.FORCE_PUSH else NetOp.PUSH
+        runOp(NetStatus(op.running, branch, NetState.RUNNING, cancellable = true), {
+            describe(op, it).let { status -> if (status.state == NetState.FAILED || status.state == NetState.WARNING) status.copy(next = null, nextLabel = "", alternative = null, alternativeLabel = "") else status }
+        }) { pushBranch(branch, force) }
+    }
+
     val actions = GitActions(
         preview = { if (!operationBusy && !loading) preview = it },
         editRebase = { if (!operationBusy && !loading) interactiveBase = it },
@@ -750,7 +766,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                         if (cli != null) {
                             menuAnchor = null
                             val full = (if (ref.label.kind == RefKind.BRANCH) "refs/heads/" else "refs/remotes/") + ref.label.name
-                            val own = if (ref.label.kind == RefKind.BRANCH) branchMenu(ref.label.name, ref.commitId, ref.label.isCurrent, currentBranch, actions)
+                            val own = if (ref.label.kind == RefKind.BRANCH) branchMenu(ref.label.name, ref.commitId, ref.label.isCurrent, currentBranch, actions,
+                                    hasUpstream = branchSync[ref.label.name]?.ahead != null, onPush = { force -> runBranchPush(ref.label.name, force) })
                                 else listOf(MenuItem(t("Check out as local branch", "检出为本地分支")) {
                                     actions.run(t("Checking out", "正在检出"), t("Checked out ${ref.label.name}", "已检出 ${ref.label.name}")) { checkoutRemote(ref.label.name) }
                                 })

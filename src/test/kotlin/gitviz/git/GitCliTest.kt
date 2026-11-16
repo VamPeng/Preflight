@@ -68,6 +68,60 @@ class GitCliTest {
     }
 
     @Test
+    fun `pushBranch pushes another branch without switching and sets a missing upstream`() {
+        prepare()
+        git(work, "checkout", "-q", "-b", "feature")
+        commit(work, "b", "x\n")
+        git(work, "checkout", "-q", "main")
+        File(work, "a").writeText("uncommitted\n")
+        val cli = GitCli(work)
+
+        assertTrue(cli.pushBranch("feature").ok)
+        assertEquals(git(work, "rev-parse", "feature"), git(origin, "rev-parse", "feature"))
+        assertEquals("origin/feature", git(work, "rev-parse", "--abbrev-ref", "feature@{upstream}"))
+        assertEquals("main", git(work, "rev-parse", "--abbrev-ref", "HEAD"), "current branch is untouched")
+        assertEquals("uncommitted\n", File(work, "a").readText(), "working changes are untouched")
+
+        // 有上游后再提交，再推一次：推到上游，main 不受牵连
+        git(work, "checkout", "-q", "feature")
+        commit(work, "b", "y\n")
+        git(work, "checkout", "-q", "main")
+        val mainBefore = git(origin, "rev-parse", "main")
+        assertTrue(cli.pushBranch("feature").ok)
+        assertEquals(git(work, "rev-parse", "feature"), git(origin, "rev-parse", "feature"))
+        assertEquals(mainBefore, git(origin, "rev-parse", "main"))
+    }
+
+    @Test
+    fun `pushBranch pushes to the configured upstream name and refuses missing branch or remote`() {
+        prepare()
+        git(work, "branch", "local-name")
+        git(work, "config", "branch.local-name.remote", "origin"); git(work, "config", "branch.local-name.merge", "refs/heads/remote-name")
+        val cli = GitCli(work)
+        assertTrue(cli.pushBranch("local-name").ok)
+        assertEquals(git(work, "rev-parse", "local-name"), git(origin, "rev-parse", "remote-name"))
+        assertFalse(cli.pushBranch("nope").ok)
+        git(work, "remote", "rename", "origin", "elsewhere"); git(work, "branch", "fresh")
+        val noOrigin = cli.pushBranch("fresh")
+        assertFalse(noOrigin.ok); assertTrue("origin" in noOrigin.output)
+    }
+
+    @Test
+    fun `pushBranch is rejected when behind and force-with-lease replaces it`() {
+        prepare()
+        git(work, "checkout", "-q", "-b", "feature"); commit(work, "b", "1\n")
+        val cli = GitCli(work)
+        assertTrue(cli.pushBranch("feature").ok)
+        cloneTo(other); git(other, "checkout", "-q", "feature"); commit(other, "b", "theirs\n"); git(other, "push", "-q")
+        git(work, "fetch", "-q"); git(work, "reset", "-q", "--hard", "HEAD~1"); commit(work, "b", "mine\n")
+        git(work, "checkout", "-q", "main")
+        assertEquals(GitFailure.REJECTED, cli.pushBranch("feature").failure)
+        assertTrue(cli.pushBranch("feature", force = true).ok)
+        assertEquals(git(work, "rev-parse", "feature"), git(origin, "rev-parse", "feature"))
+        assertEquals("main", git(work, "rev-parse", "--abbrev-ref", "HEAD"))
+    }
+
+    @Test
     fun `push sets the upstream of a new branch`() {
         prepare()
         git(work, "checkout", "-q", "-b", "feature")
@@ -711,8 +765,20 @@ class GitCliTest {
 
     @Test
     fun `current branch cannot be deleted or renamed from its menu`() {
-        assertEquals(listOf("New branch from here…"), labels(branchMenu("main", "abcdef0123", isCurrent = true, "main", noActions)).filter { it.enabled }.map { it.label })
+        assertEquals(listOf("New branch from here…", "Push main", "Force push…"), labels(branchMenu("main", "abcdef0123", isCurrent = true, "main", noActions)).filter { it.enabled }.map { it.label })
         assertTrue(labels(branchMenu("side", "abcdef0123", isCurrent = false, "main", noActions)).all { it.enabled })
+    }
+
+    @Test
+    fun `branch menu push items follow the upstream and report the force flag`() {
+        val pushed = mutableListOf<Boolean>()
+        val withUpstream = labels(branchMenu("side", "abcdef0123", isCurrent = false, "main", noActions, hasUpstream = true, onPush = { pushed += it }))
+        withUpstream.single { it.label == "Push side" }.action()
+        withUpstream.single { it.label == "Force push…" }.action()
+        assertEquals(listOf(false, true), pushed)
+        val noUpstream = labels(branchMenu("side", "abcdef0123", isCurrent = false, "main", noActions, hasUpstream = false))
+        assertTrue(noUpstream.any { it.label == "Push and set upstream (origin)" && it.enabled })
+        assertFalse(noUpstream.single { it.label == "Force push…" }.enabled, "nothing to overwrite without an upstream")
     }
 
     /** 点分支菜单的「从这里新建分支」，返回弹出的对话框；确认时在 work 上真的执行。 */
