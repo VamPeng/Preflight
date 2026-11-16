@@ -115,6 +115,9 @@ internal fun CommitList(
     sidebarHighlight: Int? = null,
     historyInsets: CommitHistoryInsets? = null,
     focusRequester: FocusRequester? = null,
+    /** 工作区有几个未提交的文件；大于 0 时列表顶部多一行，点它去本地改动。 */
+    uncommitted: Int = 0,
+    onUncommitted: () -> Unit = {},
 ) {
     // 优先级：鼠标在图上指着的线 > 侧边栏指着的分支 > 选中提交所在的线
     var hoverLine by remember { mutableStateOf<Int?>(null) }
@@ -152,6 +155,11 @@ internal fun CommitList(
         Column(Modifier.fillMaxSize()) {
             ColumnHeader(lanesShown)
             HorizontalDivider()
+            // 固定在表头下面，不随列表滚动，也不占列表的下标
+            if (uncommitted > 0) {
+                val headLane = state.headId?.let { state.indexById[it] }?.let { state.rows[it].node }?.takeIf { it < lanesShown } ?: 0
+                UncommittedRow(uncommitted, lanesShown, headLane, onUncommitted)
+            }
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 val scrollbarWidth = if (historyInsets != null) CommitHistoryScrollbarWidth else 10.dp
                 LazyColumn(Modifier.fillMaxSize().padding(end = scrollbarWidth), state = listState,
@@ -241,11 +249,16 @@ private fun CommitRow(
             Text("+${c.refs.size - MAX_VISIBLE_REFS}", fontSize = TypeScale.Caption, color = Palette.Faint,
                 modifier = Modifier.padding(end = 6.dp))
         }
-        Text(
-            c.shortMessage, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = TypeScale.Body,
-            fontWeight = if (isHead) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f),
-            color = if (c.isStash) Palette.Muted else Color.Unspecified,
-        )
+        // 说明和标记装进同一个占满剩余宽度的容器，作者、时间、哈希三列才不会随说明长短左右飘
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                c.shortMessage, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = TypeScale.Body,
+                fontWeight = if (isHead) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f, fill = false),
+                color = if (c.isStash) Palette.Muted else Color.Unspecified,
+            )
+            commitMarks(c).forEach { Marker(it) }
+            Spacer(Modifier.weight(1f))
+        }
         Row(
             Modifier.width(AuthorColumn).padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -260,6 +273,41 @@ private fun CommitRow(
     }
 }
 
+/** 提交行末尾的小标记：合并提交、说明有正文（不止一行）。储藏不标。 */
+internal fun commitMarks(c: CommitInfo): List<String> = buildList {
+    if (c.isStash) return@buildList
+    if (c.parents.size > 1) add(t("Merge", "合并"))
+    if (c.fullMessage.trim().lineSequence().drop(1).any { it.isNotBlank() }) add(t("Has body", "有正文"))
+}
+
+@Composable
+private fun Marker(label: String) {
+    val shape = RoundedCornerShape(9.dp)
+    Text(label, fontSize = TypeScale.Caption, color = Palette.Muted, maxLines = 1, softWrap = false,
+        modifier = Modifier.padding(start = 8.dp).border(1.dp, Palette.Faint, shape).padding(horizontal = 7.dp, vertical = 1.dp))
+}
+
+/** 列表顶部的「未提交的改动」：虚线节点接在 HEAD 所在的列上方。 */
+@Composable
+private fun UncommittedRow(count: Int, lanesShown: Int, headLane: Int, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(Settings.rowHeight.dp).hoverRow().clickable(onClick = onClick).padding(start = 12.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.foundation.Canvas(Modifier.width(LaneWidth * lanesShown).fillMaxHeight()) {
+            val x = LaneWidth.toPx() * headLane + LaneWidth.toPx() / 2
+            val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()))
+            drawLine(Palette.Accent, androidx.compose.ui.geometry.Offset(x, size.height / 2), androidx.compose.ui.geometry.Offset(x, size.height), 2.5.dp.toPx(), pathEffect = dash)
+            drawCircle(Palette.Accent, 5.dp.toPx(), androidx.compose.ui.geometry.Offset(x, size.height / 2),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 2.dp.toPx()))))
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(t("Uncommitted changes · ${countOf(count, "file")}", "未提交的改动 · $count 个文件"), fontSize = TypeScale.Body,
+            fontWeight = FontWeight.SemiBold, color = Palette.AccentInk, modifier = Modifier.weight(1f))
+        Text(t("View →", "查看 →"), fontSize = TypeScale.Small, color = Palette.Muted)
+    }
+}
+
 /** 引用标记：当前分支用主色实心，本地分支浅底，远程和标签描边。 */
 @Composable
 private fun RefChip(ref: RefLabel, lane: Color) {
@@ -268,7 +316,7 @@ private fun RefChip(ref: RefLabel, lane: Color) {
         ref.kind == RefKind.HEAD -> Chip(ref.name, Palette.Ink, Palette.Rail, modifier, bold = true)
         ref.kind == RefKind.STASH -> Chip(ref.name, Color.Transparent, Palette.Muted, modifier, outline = Palette.Line)
         ref.kind == RefKind.TAG -> Chip(ref.name, Color.Transparent, Palette.Muted, modifier, outline = Palette.Faint)
-        ref.kind == RefKind.REMOTE -> Chip(ref.name, Color.Transparent, lane, modifier, outline = lane)
+        ref.kind == RefKind.REMOTE -> Chip(ref.name, lane.copy(alpha = 0.08f), lane, modifier, outline = lane)
         ref.isCurrent -> Chip(ref.name, Palette.Accent, Palette.OnAccent, modifier, bold = true)
         else -> Chip(ref.name, lane.copy(alpha = 0.2f), lane, modifier)
     }

@@ -117,11 +117,11 @@ object Palette {
 }
 
 object TypeScale {
-    val Caption = 11.sp
-    val Small = 12.sp
-    val Body = 13.sp
-    val Heading = 15.sp
-    val Title = 16.sp
+    val Caption = 12.sp
+    val Small = 13.sp
+    val Body = 14.sp
+    val Heading = 16.sp
+    val Title = 17.sp
 }
 
 val isMac = System.getProperty("os.name").startsWith("Mac")

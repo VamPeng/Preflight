@@ -75,6 +75,9 @@ fun RefSidebar(
     /** 鼠标移到某个引用上、移开（null）时通知，图上据此高亮那条分支。 */
     onHover: (RefTarget?) -> Unit = {},
     groups: List<SidebarGroup> = emptyList(),
+    /** 本地分支名 → 领先／落后和最后提交时间，行右边显示；没读到的分支不显示。 */
+    sync: Map<String, GitRepo.BranchSync> = emptyMap(),
+    nowSeconds: Long = 0,
 ) {
     var collapsed by remember { mutableStateOf(setOf("${RefKind.TAG}:")) } // 标签通常很多，默认收起
     val filtering = filter.isNotBlank()
@@ -129,6 +132,7 @@ fun RefSidebar(
                         } else {
                             RefLeafRow(
                                     row, ref, ref.commitId == selectedId, branchColors.index(ref.label),
+                                    detail = if (ref.label.kind == RefKind.BRANCH) sync[ref.label.name]?.let { branchDetail(it, nowSeconds) } else null,
                                     onHover = onHover, onClick = { keyboardRef = ref.label; focus.requestFocus(); onSelect(ref) },
                                     onOpen = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchOpen(ref) },
                                     onMenu = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchMenu(ref) },
@@ -182,6 +186,7 @@ private fun RefLeafRow(
     ref: RefTarget,
     selected: Boolean,
     colorIndex: Int?,
+    detail: BranchDetail?,
     onHover: (RefTarget?) -> Unit,
     onClick: () -> Unit,
     onOpen: () -> Unit,
@@ -220,9 +225,29 @@ private fun RefLeafRow(
         Text(
             row.node.name, fontSize = TypeScale.Body, maxLines = 1, overflow = TextOverflow.Ellipsis,
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (current) Palette.AccentInk else colors.onSurface,
+            color = if (current) Palette.AccentInk else if (detail?.stale == true) Palette.Muted else colors.onSurface,
+            modifier = Modifier.weight(1f, fill = false),
         )
+        if (detail != null && detail.text.isNotEmpty()) {
+            Spacer(Modifier.weight(1f))
+            Text(detail.text, fontSize = TypeScale.Caption, maxLines = 1, softWrap = false, color = Palette.Faint,
+                fontFamily = if (detail.mono) CodeFont else null, modifier = Modifier.padding(start = 6.dp))
+        }
     }
+}
+
+/** 超过这么多天没有新提交的分支标灰。 */
+internal const val STALE_DAYS = 30
+
+internal data class BranchDetail(val text: String, val stale: Boolean, val mono: Boolean)
+
+/** 侧边栏分支右边的小字：有领先／落后数就写 ↑2 ↓1；没有就写久不动的分支多久没动。 */
+internal fun branchDetail(sync: GitRepo.BranchSync, nowSeconds: Long): BranchDetail {
+    val days = if (sync.lastCommitSeconds > 0 && nowSeconds > 0) (nowSeconds - sync.lastCommitSeconds) / 86_400 else 0
+    val stale = days >= STALE_DAYS
+    val counts = if (sync.ahead != null) syncLabel(sync.ahead, sync.behind ?: 0) else ""
+    val age = if (stale) t("${days}d ago", "$days 天前") else ""
+    return BranchDetail(listOf(counts, age).filter { it.isNotEmpty() }.joinToString(" · "), stale, mono = counts.isNotEmpty() && age.isEmpty())
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -80,10 +80,10 @@ fun GraphCell(
         } else if (row.node < lanesShown) {
             val center = Offset(x(row.node), mid)
             // 提交是站点；HEAD 是更大的换乘站
-            val r = (if (isHeadCommit) 6.dp else 4.5.dp).toPx()
+            val r = (if (isHeadCommit) 7.dp else 5.dp).toPx()
             drawCircle(colorOf(row.nodeTrack), r, center)
             drawCircle(Palette.Node, r - 2.dp.toPx(), center)
-            if (isHeadCommit) drawCircle(Palette.Rail, 1.5.dp.toPx(), center)
+            if (isHeadCommit) drawCircle(colorOf(row.nodeTrack), 3.dp.toPx(), center)
         }
     }
 }

@@ -92,8 +92,8 @@ class LayerThreeUiTest {
             }
             "HEAD~2".forEach { c -> scene.sendKeyEvent(KeyEvent(Key.Unknown, KeyEventType.Unknown, codePoint = c.code,
                 nativeEvent = java.awt.event.KeyEvent(java.awt.Canvas(), java.awt.event.KeyEvent.KEY_TYPED, 0, 0, java.awt.event.KeyEvent.VK_UNDEFINED, c))) }
-            // 按钮是应用自己的小按钮（比 Material 的矮），位置靠截图量：加载区间在 y≈156，执行编辑在 y≈729
-            draw(); click(990f, 156f); click(965f, 729f)
+            // 按钮是应用自己的小按钮（比 Material 的矮），位置靠截图量：加载区间在 y≈176，执行编辑在 y≈728（说明文字占两行）
+            draw(); click(980f, 176f); click(980f, 728f)
             save(scene, "interactive-input")
             assertEquals(2, reviewed?.interactive?.commits?.size)
             assertEquals("third", r.git("log", "-1", "--format=%s"))

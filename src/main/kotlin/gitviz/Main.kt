@@ -123,6 +123,10 @@ private const val FALLBACK_RELOAD_MS = 30_000L
 
 private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, INSIGHTS, COMPARE, AI }
 
+/** 刚打开仓库时默认选中 HEAD；HEAD 不在已加载范围内就选第一个真正的提交，最后才是储藏。 */
+internal fun defaultSelection(commits: List<CommitInfo>, headId: String?): CommitInfo? =
+    commits.firstOrNull { it.id == headId } ?: commits.firstOrNull { !it.isStash } ?: commits.firstOrNull()
+
 /** 打开的仓库和已加载的那部分历史。不可变，每加载一页换一个新对象。 */
 internal class RepoState(
     val repo: GitRepo,
@@ -278,8 +282,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 // 刷新时保持选中；提交不在了或换了仓库才回到第一个
                 val commits = newState.result.commits
                 val sameRepository = before?.repo?.repository?.directory == newState.repo.repository.directory
-                selected = if (sameRepository) commits.firstOrNull { it.id == selected?.id } ?: commits.firstOrNull()
-                    else commits.firstOrNull()
+                selected = if (sameRepository) commits.firstOrNull { it.id == selected?.id } ?: defaultSelection(commits, newState.headId)
+                    else defaultSelection(commits, newState.headId)
                 if (!sameRepository) {
                     working = emptyList()
                     stashes = emptyList()
@@ -346,6 +350,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     // 侧边栏「工作树」「子模块」分组的数据。跟着工作区一起重读：写操作结束、文件变化后都会刷新
     var worktrees by remember(cli) { mutableStateOf(emptyList<WorktreeInfo>()) }
     var submodules by remember(cli) { mutableStateOf(emptyList<SubmoduleInfo>()) }
+    // 每个本地分支的领先／落后数和最后提交时间。引用变了（获取、提交、切分支）才重读，后台算，读不出来就不显示
+    var branchSync by remember(cli) { mutableStateOf(emptyMap<String, GitRepo.BranchSync>()) }
     // 比较页正在比较的两个引用，从分支右键「与当前分支比较」进入
     var compare by remember(cli) { mutableStateOf<CompareRequest?>(null) }
 
@@ -620,7 +626,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     state = next
                     historyError = null
                     val commits = next.result.commits
-                    selected = commits.firstOrNull { it.id == selected?.id } ?: commits.firstOrNull()
+                    selected = commits.firstOrNull { it.id == selected?.id } ?: defaultSelection(commits, next.headId)
                     scrollTarget = selected?.id
                 }
             } catch (e: CancellationException) {
@@ -668,6 +674,10 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     }
 
     LaunchedEffect(cli) { rootFocus.requestFocus() }
+    LaunchedEffect(cli, s?.result?.refs) {
+        val dir = workTree ?: return@LaunchedEffect
+        branchSync = withContext(Dispatchers.IO) { runCatching { GitRepo.open(dir).use { it.branchSync() } }.getOrDefault(emptyMap()) }
+    }
     LaunchedEffect(cli, workingReloads) {
         val git = cli ?: return@LaunchedEffect
         val read = withContext(Dispatchers.IO) {
@@ -765,6 +775,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     branchColors = s.branchColors,
                     onHover = { hoveredRef = it },
                     modifier = Modifier.fillMaxWidth().weight(1f),
+                    sync = branchSync,
+                    nowSeconds = rememberNowSeconds(),
                     groups = if (cli == null || workTree == null) emptyList() else {
                         val openRepo: (File) -> Unit = { open(it, reportSuccess = true) }
                         val reveal: (File) -> Unit = { dir ->
@@ -787,7 +799,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             }
             VerticalDivider()
         }
-        Column(Modifier.weight(1f).fillMaxHeight().background(Palette.Ground)) {
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+        Column(Modifier.fillMaxSize().background(Palette.Ground)) {
             WindowDraggableArea {
                 // 没有侧边栏时红绿灯压在工具栏上，要让开
                 val start = if (isMac && s == null) 84.dp else 18.dp
@@ -803,6 +816,9 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     onPushMenu = { menuAnchor = null; menu = listOf(MenuItem(t("Push", "推送"), enabled = available && !inConflict) { registry.execute("push") }, MenuItem(t("Force push…", "强制推送…"), enabled = available && !inConflict && currentBranch != null, danger = true) { registry.execute("force-push") }) },
                     onSearchEscape = { query = ""; view = MainView.HISTORY; scope.launch { withFrameNanos { }; historyFocus.requestFocus() } },
                     netBusy = operationBusy,
+                    branch = currentBranch,
+                    ahead = currentBranch?.let { branchSync[it]?.ahead },
+                    behind = currentBranch?.let { branchSync[it]?.behind },
                     onFetch = { registry.execute("fetch") },
                     onPull = { registry.execute("pull") },
                     onPush = { registry.execute("push") },
@@ -814,10 +830,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 )
             }
             HorizontalDivider()
-            net?.let {
-                NetBanner(it, onAction = { op -> runNet(op) }, onDismiss = { if (net === it) net = null }, onCancel = runningOperation::cancel)
-                HorizontalDivider()
-            }
             if (s == null) {
                 Welcome(loading, Settings.recentRepos, onRecent = { open(File(it), reportSuccess = true) }, onOpen = chooseAndOpen, onClone = ::askClone)
             } else {
@@ -917,6 +929,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                                 Modifier.fillMaxSize(),
                                 historyInsets = historyInsets,
                                 focusRequester = historyFocus,
+                                uncommitted = if (query.isBlank() && pathFilter == null) working.size else 0,
+                                onUncommitted = { view = MainView.CHANGES },
                                 sidebarHighlight = hoveredRef?.let { s.indexById[it.commitId] }?.let { s.rows[it].nodeTrack.line },
                                 onMenu = { c ->
                                     selected = c
@@ -952,6 +966,12 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 HorizontalDivider()
                 StatusBar(s, loadingMore || seeking != null, seeking?.let { { it.job.cancel() } })
             }
+        }
+        // 操作反馈浮在右下角，不再占一整行把列表顶下去
+        net?.let {
+            NetBanner(it, onAction = { op -> runNet(op) }, onDismiss = { if (net === it) net = null }, onCancel = runningOperation::cancel,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(end = 16.dp, bottom = 40.dp))
+        }
         }
     }
     }

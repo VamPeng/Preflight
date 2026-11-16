@@ -74,6 +74,9 @@ internal fun PathFilterBar(path: String, result: LoadResult, onClear: () -> Unit
     }
 }
 
+/** ↑2 ↓3：领先、落后的提交数，为 0 的那一项不写。 */
+internal fun syncLabel(ahead: Int, behind: Int): String = listOfNotNull("↑$ahead".takeIf { ahead > 0 }, "↓$behind".takeIf { behind > 0 }).joinToString(" ")
+
 @Composable
 internal fun Toolbar(
     state: RepoState?,
@@ -93,6 +96,10 @@ internal fun Toolbar(
     onPullMenu: () -> Unit = {},
     onPushMenu: () -> Unit = {},
     onSearchEscape: () -> Unit = {},
+    /** 当前分支名和它相对上游的领先、落后数；没有上游时 ahead、behind 为 null。 */
+    branch: String? = null,
+    ahead: Int? = null,
+    behind: Int? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().height(TitleBarHeight).padding(start = start, end = 14.dp),
@@ -115,6 +122,18 @@ internal fun Toolbar(
             Text(state?.repo?.displayName ?: t("Open repository", "打开仓库"), fontWeight = FontWeight.SemiBold, fontSize = TypeScale.Title, maxLines = 1)
             Icon(Icons.ChevronDown, Palette.Muted, size = 10.dp, strokeWidth = 3f)
         }
+        if (state != null && branch != null) Hint(
+            if (ahead == null) t("No upstream branch", "没有上游分支") else t("$ahead to push, $behind to pull", "待推送 $ahead 个，待拉取 $behind 个"),
+        ) {
+            Row(
+                Modifier.clip(RoundedCornerShape(13.dp)).background(Palette.Raised).padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(branch, fontSize = TypeScale.Small, fontWeight = FontWeight.SemiBold, color = Palette.AccentInk, maxLines = 1)
+                if (ahead != null && (ahead > 0 || (behind ?: 0) > 0)) Text(syncLabel(ahead, behind ?: 0), fontSize = TypeScale.Caption, fontFamily = CodeFont, color = Palette.Muted, maxLines = 1)
+            }
+        }
         Spacer(Modifier.weight(1f))
         if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         if (state != null) {
@@ -122,8 +141,8 @@ internal fun Toolbar(
                 ToolButton(t("Refresh", "刷新"), Icons.Refresh, enabled = !loading && !netBusy, onClick = onRefresh)
                 val canSync = !loading && !netBusy && state.repo.workTree != null
                 ToolButton(t("Fetch", "获取"), Icons.Fetch, enabled = canSync, onClick = onFetch)
-                ToolButton(t("Pull", "拉取"), Icons.Pull, enabled = canSync, onClick = onPull, onMenu = onPullMenu)
-                ToolButton(t("Push", "推送"), Icons.Push, enabled = canSync, onClick = onPush, onMenu = onPushMenu)
+                ToolButton(t("Pull", "拉取"), Icons.Pull, enabled = canSync, onClick = onPull, onMenu = onPullMenu, count = behind ?: 0)
+                ToolButton(t("Push", "推送"), Icons.Push, enabled = canSync, onClick = onPush, onMenu = onPushMenu, count = ahead ?: 0)
                 ToolButton(t("Stash", "储藏"), Icons.Stash, enabled = canSync && canStash, onClick = onStash)
             }
             SearchField(query, onQuery, searchFocus, onSearchEscape)

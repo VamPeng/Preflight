@@ -378,6 +378,19 @@ class GitRepo private constructor(val repository: Repository) : AutoCloseable {
         }
     }
 
+    /** 本地分支相对上游的领先／落后提交数和最后一个提交的时间。没有上游的分支 ahead、behind 为 null。 */
+    data class BranchSync(val ahead: Int?, val behind: Int?, val lastCommitSeconds: Long)
+
+    /** 每个本地分支一条，键是分支短名。会读提交对象，在 IO 线程调用。 */
+    fun branchSync(): Map<String, BranchSync> = RevWalk(repository).use { walk ->
+        repository.refDatabase.getRefsByPrefix(Constants.R_HEADS).associate { ref ->
+            val short = ref.name.removePrefix(Constants.R_HEADS)
+            val status = runCatching { org.eclipse.jgit.lib.BranchTrackingStatus.of(repository, short) }.getOrNull()
+            val time = runCatching { walk.parseCommit(ref.objectId).commitTime.toLong() }.getOrDefault(0L)
+            short to BranchSync(status?.aheadCount, status?.behindCount, time)
+        }
+    }
+
     internal fun collectRefLabels(): Map<String, List<RefLabel>> {
         val map = HashMap<String, MutableList<RefLabel>>()
         val current = repository.fullBranch // 分离 HEAD 时是提交哈希

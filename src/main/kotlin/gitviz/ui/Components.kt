@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -101,7 +102,7 @@ fun Icon(path: String, color: Color, modifier: Modifier = Modifier, size: Dp = 1
 
 /** 工具栏按钮：上图标下文字。 */
 @Composable
-fun ToolButton(label: String, icon: String, enabled: Boolean, onClick: () -> Unit, onMenu: (() -> Unit)? = null) {
+fun ToolButton(label: String, icon: String, enabled: Boolean, onClick: () -> Unit, onMenu: (() -> Unit)? = null, count: Int = 0) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     Column(
@@ -113,7 +114,12 @@ fun ToolButton(label: String, icon: String, enabled: Boolean, onClick: () -> Uni
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, Palette.Ink)
+        Box {
+            Icon(icon, Palette.Ink)
+            // 待拉取、待推送的提交数：角标贴在图标右上角
+            if (count > 0) Text("$count", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Palette.OnAccent, maxLines = 1, softWrap = false,
+                modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-4).dp).background(Palette.Accent, RoundedCornerShape(7.dp)).padding(horizontal = 4.dp))
+        }
         Text(label, fontSize = TypeScale.Caption, color = Palette.Muted, maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 2.dp))
     }
 }

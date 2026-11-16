@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -111,7 +112,7 @@ internal fun describeAction(running: String, done: String, result: GitResult): N
 
 /** 成功提示可自动收起；悬停或阅读详情时保留，警告和错误始终等待用户处理。 */
 @Composable
-internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null) {
+internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var expanded by remember(status) { mutableStateOf(false) }
@@ -135,10 +136,13 @@ internal fun NetBanner(status: NetStatus, onAction: (NetOp) -> Unit, onDismiss: 
         if (copied) { delay(2000); copied = false }
     }
     val details = status.output.ifBlank { status.detail }
+    val card = RoundedCornerShape(10.dp)
     Column(
-        Modifier.fillMaxWidth().background(color.copy(alpha = 0.08f))
+        modifier.widthIn(max = 520.dp).shadow(8.dp, card).clip(card)
+            .background(Palette.Field).background(color.copy(alpha = 0.10f))
+            .border(1.dp, color.copy(alpha = 0.4f), card)
             .hoverable(interaction)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
