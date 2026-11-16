@@ -96,7 +96,7 @@ internal fun Toolbar(
     onPullMenu: () -> Unit = {},
     onPushMenu: () -> Unit = {},
     onSearchEscape: () -> Unit = {},
-    /** 当前分支名和它相对上游的领先、落后数；没有上游时 ahead、behind 为 null。 */
+    /** 当前分支名；ahead、behind 是它相对上游的领先、落后数，只用在拉取、推送按钮的角标上，没有上游时为 null。 */
     branch: String? = null,
     ahead: Int? = null,
     behind: Int? = null,
@@ -122,18 +122,11 @@ internal fun Toolbar(
             Text(state?.repo?.displayName ?: t("Open repository", "打开仓库"), fontWeight = FontWeight.SemiBold, fontSize = TypeScale.Title, maxLines = 1)
             Icon(Icons.ChevronDown, Palette.Muted, size = 10.dp, strokeWidth = 3f)
         }
-        if (state != null && branch != null) Hint(
-            if (ahead == null) t("No upstream branch", "没有上游分支") else t("$ahead to push, $behind to pull", "待推送 $ahead 个，待拉取 $behind 个"),
-        ) {
-            Row(
-                Modifier.clip(RoundedCornerShape(13.dp)).background(Palette.Raised).padding(horizontal = 10.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(branch, fontSize = TypeScale.Small, fontWeight = FontWeight.SemiBold, color = Palette.AccentInk, maxLines = 1)
-                if (ahead != null && (ahead > 0 || (behind ?: 0) > 0)) Text(syncLabel(ahead, behind ?: 0), fontSize = TypeScale.Caption, fontFamily = CodeFont, color = Palette.Muted, maxLines = 1)
-            }
-        }
+        // 只显示当前分支名；领先／落后数在侧边栏分支行和拉取、推送角标上，这里不重复
+        if (state != null && branch != null) Text(
+            branch, fontSize = TypeScale.Small, fontWeight = FontWeight.SemiBold, color = Palette.AccentInk, maxLines = 1,
+            modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Palette.Raised).padding(horizontal = 10.dp, vertical = 4.dp),
+        )
         Spacer(Modifier.weight(1f))
         if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         if (state != null) {
