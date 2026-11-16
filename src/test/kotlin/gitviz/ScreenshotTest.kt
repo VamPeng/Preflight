@@ -123,11 +123,11 @@ class ScreenshotTest {
     @Test
     fun `files view renders`() {
         val dir = File(System.getenv("GITVIZ_SCREENSHOT_REPO") ?: ".").absoluteFile
-        for ((name, start) in listOf("files" to "", "files-sub" to "src/main/kotlin/gitviz")) {
+        for ((name, start, filter) in listOf(Triple("files", "", ""), Triple("files-sub", "src/main/kotlin/gitviz", ""), Triple("files-filter", "", "view"))) {
             val scene = ImageComposeScene(1112 * 2, 700 * 2, Density(2f)) {
                 GitVizTheme {
                     Surface(Modifier.fillMaxSize(), color = Palette.Ground, contentColor = Palette.Ink) {
-                        FilesView(GitCli(dir), dir, 0, {}, {}, { _, _ -> }, Modifier.fillMaxSize(), onRun = { _, _, _, _ -> }, onSuccess = {}, start = start)
+                        FilesView(GitCli(dir), dir, 0, {}, {}, { _, _ -> }, Modifier.fillMaxSize(), onRun = { _, _, _, _ -> }, onSuccess = {}, start = start, filter = filter)
                     }
                 }
             }

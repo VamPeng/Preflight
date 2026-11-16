@@ -34,6 +34,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.*
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -50,14 +57,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private val TreeWidth = 260.dp
-private val StatusColumn = 96.dp
-private val SizeColumn = 72.dp
-private val TimeColumn = 92.dp
+private val StatusColumn = 110.dp
+private val SizeColumn = 84.dp
+private val TimeColumn = 110.dp
 
 /**
- * 文件：左边是工作区的目录树，右边是当前目录的文件表，被忽略的也列出来。
- * 目录结构直接读磁盘，git status 只用来标状态、补上已删除的文件。不预览内容，双击交给系统打开。
+ * 文件：一棵带列的树，文件夹原地展开，列出状态、大小、修改时间；被忽略的也列出来。
+ * 目录结构直接读磁盘，git status 只用来标状态、补上已删除的文件。不预览内容，双击文件交给系统打开。
+ * 顶部可以按名称筛选：后台把所有没被忽略的目录扫一遍，匹配的路径自动展开。
  * reloadKey 变了（工作区状态重读过）就重新读一遍。
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -73,62 +80,83 @@ internal fun FilesView(
     onRun: OperationRunner,
     onSuccess: (String) -> Unit,
     busy: Boolean = false,
-    /** 一开始看哪个目录，默认根目录。 */
+    /** 一开始展开到哪个目录并选中它，默认不展开。 */
     start: String = "",
+    /** 一开始的筛选词，默认不筛选。 */
+    filter: String = "",
 ) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     var showIgnored by remember { mutableStateOf(Settings.showIgnoredFiles) }
     var expanded by remember(root) { mutableStateOf(if (start.isEmpty()) emptySet() else (ancestorsOf(start) + start).toSet()) }
-    var current by remember(root) { mutableStateOf(start) }
-    var selected by remember(root) { mutableStateOf<String?>(null) }
+    var selected by remember(root) { mutableStateOf(start.ifEmpty { null }) }
+    var query by remember(root) { mutableStateOf(filter) }
     var status by remember(root) { mutableStateOf<TreeStatus?>(null) }
     var listings by remember(root) { mutableStateOf(emptyMap<String, DirListing>()) }
     // listings 是按哪一次 status 读的；status 换了就要整个重读
     var listedWith by remember(root) { mutableStateOf<TreeStatus?>(null) }
+    // 筛选用的全量扫描，也是按哪一次 status 扫的；扫的时候旧结果先留着，扫完再换，不闪
+    var scan by remember(root) { mutableStateOf<TreeScan?>(null) }
+    var scannedWith by remember(root) { mutableStateOf<TreeStatus?>(null) }
     var revision by remember { mutableStateOf(0) }
     var menu by remember { mutableStateOf<List<MenuEntry>?>(null) }
     var dialog by remember { mutableStateOf<DialogSpec?>(null) }
-    // 传进来的可能是 . 这样的相对路径，显示名字要用真实的目录名
-    val rootName = remember(root) { root.canonicalFile.name }
+    val filtering = query.isNotBlank()
+    val listFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
 
     LaunchedEffect(cli, reloadKey, revision) {
         status = withContext(Dispatchers.IO) { TreeStatus(cli.treeStatus()) }
     }
 
-    LaunchedEffect(status, expanded, current) {
+    LaunchedEffect(status, expanded) {
         val st = status ?: return@LaunchedEffect
         val stale = listedWith !== st
-        val wanted = directoriesToRead(expanded, current)
+        val wanted = directoriesToRead(expanded)
         val toRead = if (stale) wanted else wanted.filter { it !in listings }
         if (toRead.isEmpty()) return@LaunchedEffect
-        val read = withContext(Dispatchers.IO) {
-            // 点去别的目录时这次读取会被取消，预读子目录也跟着停
-            val context = currentCoroutineContext()
-            toRead.associateWith { dir -> runCatching { listDirectory(root, dir, st, cancelled = { !context.isActive }) }.getOrNull() }
-        }
+        val read = withContext(Dispatchers.IO) { toRead.associateWith { dir -> runCatching { listDirectory(root, dir, st) }.getOrNull() } }
         ensureActive()
-        // 看着的目录被删掉了（磁盘上没有、git 也不认识），退回到还在的上一级
+        // 展开着的目录被删掉了（磁盘上没有、git 也不认识），收起它
         val gone = read.filter { (dir, listing) -> dir.isNotEmpty() && (listing == null || !File(root, dir).isDirectory && listing.entries.isEmpty()) }.keys
         val fresh = read.filterValues { it != null }.mapValues { it.value!! }
         listings = (if (stale) fresh else listings + fresh) - gone
         listedWith = st
-        if (current in gone) current = (ancestorsOf(current) + "").first { it !in gone }
         if (gone.isNotEmpty()) expanded = expanded - gone
     }
 
-    /** dir 里有没有（看得见的）子目录：读过它就看内容，否则看列父目录时预读的结果，不知道时为 null。 */
-    fun hasSubdirs(dir: String): Boolean? {
-        listings[dir]?.let { l -> return l.entries.any { it.isDir && (showIgnored || !it.ignored) } }
-        return listings[parentOf(dir)]?.entries?.firstOrNull { it.path == dir }?.subdirs?.has(showIgnored)
+    LaunchedEffect(status, filtering) {
+        val st = status ?: return@LaunchedEffect
+        if (!filtering || scannedWith === st) return@LaunchedEffect
+        val result = withContext(Dispatchers.IO) {
+            val context = currentCoroutineContext()
+            scanWorkTree(root, st, cancelled = { !context.isActive })
+        }
+        ensureActive()
+        scan = result
+        scannedWith = st
     }
 
-    /** 右边打开 dir，左边展开它的所有上级。它自己只在可能有子目录时展开，免得冒出一行“正在读取”又消失。 */
-    fun open(dir: String) {
-        current = dir
-        selected = null
-        val self = if (dir.isNotEmpty() && hasSubdirs(dir) != false) listOf(dir) else emptyList()
-        expanded = expanded + ancestorsOf(dir) + self
+    val rows = remember(listings, expanded, showIgnored, scan, query) {
+        if (filtering) scan?.let { filterTree(it, query, showIgnored) }.orEmpty() else flattenDirTree(listings, expanded, showIgnored)
+    }
+    val items = remember(rows) { rows.filterIsInstance<DirRow.Item>() }
+
+    fun toggle(entry: FileEntry) {
+        if (!entry.isDir || filtering) return
+        val closing = entry.path in expanded
+        expanded = if (closing) expanded - entry.path else expanded + entry.path
+        // 收起的目录里有选中项，选中移到这个目录上，免得选中项看不见
+        if (closing && selected?.startsWith(entry.path + "/") == true) selected = entry.path
+    }
+
+    fun select(path: String) {
+        selected = path
+        val index = rows.indexOfFirst { it.key == path }
+        if (index >= 0) scope.launch {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            if (visible.isNotEmpty() && (index <= visible.first().index || index >= visible.last().index)) listState.animateScrollToItem((index - 1).coerceAtLeast(0))
+        }
     }
 
     fun systemOpen(entry: FileEntry) {
@@ -138,6 +166,12 @@ internal fun FilesView(
                 onFailure(t("Couldn't open ${entry.name}", "打不开 ${entry.name}"), error.message ?: error.toString())
             }
         }
+    }
+
+    fun openEntry(entry: FileEntry) {
+        if (entry.isDir) toggle(entry)
+        else if (entry.missing) onFailure(t("${entry.name} was deleted", "${entry.name} 已删除"), t("It's no longer on disk. You can restore it in Changes.", "磁盘上已经没有这个文件，可以在“本地改动”里恢复。"))
+        else systemOpen(entry)
     }
 
     fun runIgnore(entry: FileEntry, target: IgnoreTarget, stopTracking: Boolean = false) {
@@ -183,8 +217,8 @@ internal fun FilesView(
         val file = File(root, entry.path)
         val items = ArrayList<MenuEntry>()
         if (!entry.missing) {
-            items += MenuItem(if (entry.isDir) t("Open", "打开") else t("Open with default app", "用默认程序打开")) {
-                if (entry.isDir) open(entry.path) else systemOpen(entry)
+            items += MenuItem(if (entry.isDir) t(if (entry.path in expanded) "Collapse" else "Expand", if (entry.path in expanded) "收起" else "展开") else t("Open with default app", "用默认程序打开"), enabled = !entry.isDir || !filtering) {
+                openEntry(entry)
             }
             items += MenuItem(t(if (isMac) "Show in Finder" else "Show in folder", if (isMac) "在 Finder 中显示" else "在文件夹中显示")) {
                 scope.launch {
@@ -213,125 +247,93 @@ internal fun FilesView(
         return items
     }
 
-    Row(modifier) {
-        // 左边：目录树
-        Column(Modifier.width(TreeWidth).fillMaxHeight()) {
-            Row(
-                Modifier.fillMaxWidth().height(32.dp).padding(start = 12.dp, end = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                val toggleIgnored = {
-                    showIgnored = !showIgnored
-                    Settings.updateShowIgnoredFiles(showIgnored)
-                    // 正在看的目录被藏起来了，回到根目录
-                    if (!showIgnored && status?.isIgnored(current) == true) open("")
-                }
-                CheckBox(if (showIgnored) CheckState.ALL else CheckState.NONE, Modifier.clickable(onClick = toggleIgnored))
-                Text(t("Show ignored", "显示忽略的"), fontSize = TypeScale.Small, color = Palette.Muted,
-                    modifier = Modifier.weight(1f).clickable(onClick = toggleIgnored))
-                IconButton(Icons.Refresh) { revision++ }
+
+    // 键盘：上下移动；右键展开目录（已展开就进到第一项），左键收起目录（已收起就回到上一级），回车打开
+    fun onKey(event: KeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown || event.isMetaPressed || event.isCtrlPressed || event.isAltPressed || items.isEmpty()) return false
+        val at = items.indexOfFirst { it.entry.path == selected }
+        val current = items.getOrNull(at)
+        when (event.key) {
+            Key.DirectionDown, Key.J -> select(items[(at + 1).coerceIn(items.indices)].entry.path)
+            Key.DirectionUp, Key.K -> select(items[(if (at < 0) 0 else at - 1).coerceIn(items.indices)].entry.path)
+            Key.DirectionRight -> if (current?.entry?.isDir == true) { if (current.expanded != true) toggle(current.entry) else items.getOrNull(at + 1)?.let { select(it.entry.path) } } else return false
+            Key.DirectionLeft -> if (current != null) {
+                if (current.entry.isDir && current.expanded == true && !filtering) toggle(current.entry)
+                else parentOf(current.entry.path).takeIf { it.isNotEmpty() }?.let { select(it) }
+            } else return false
+            Key.Enter -> current?.let { openEntry(it.entry) } ?: return false
+            else -> return false
+        }
+        return true
+    }
+
+    Column(modifier) {
+        // 工具条：筛选、显示被忽略的、全部折叠、刷新
+        Row(
+            Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SearchField(query, { query = it }, onEscape = { query = ""; listFocus.requestFocus() }, width = 300.dp,
+                placeholder = t("Filter by name", "按名称筛选，匹配的路径自动展开"))
+            val toggleIgnored = { showIgnored = !showIgnored; Settings.updateShowIgnoredFiles(showIgnored) }
+            Row(Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = toggleIgnored), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                CheckBox(if (showIgnored) CheckState.ALL else CheckState.NONE)
+                Text(t("Show ignored", "显示被忽略的"), fontSize = TypeScale.Small, color = Palette.Muted)
             }
-            HorizontalDivider()
-            val rows = remember(listings, expanded, showIgnored) { flattenDirTree(listings, expanded, showIgnored) }
-            val treeState = rememberLazyListState()
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                LazyColumn(Modifier.fillMaxSize().padding(end = 10.dp), state = treeState, contentPadding = PaddingValues(vertical = 4.dp)) {
-                    item(key = "/") {
-                        TreeRow(0, current == "", null, onToggle = null, onClick = { open("") }) {
-                            Icon(Icons.Folder, Palette.Muted, size = 14.dp)
-                            Text(rootName, fontSize = TypeScale.Body, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    items(rows, key = { it.key }) { row ->
-                        when (row) {
-                            is DirRow.Loading -> AfterDelay {
-                                Text(
-                                    t("Loading…", "正在读取…"), fontSize = TypeScale.Small, color = Palette.Faint,
-                                    modifier = Modifier.height(24.dp).padding(start = treeIndent(row.depth + 1) + 18.dp).wrapContentHeight(),
+            Spacer(Modifier.weight(1f))
+            val summary = when {
+                filtering && scan == null -> t("Searching…", "正在搜索…")
+                filtering -> t(countOf(items.count { it.hit != null }, "match", "matches"), "${items.count { it.hit != null }} 个匹配") +
+                    if (scan?.truncated == true) t(" (incomplete: too many files)", "（不完整：文件太多）") else ""
+                else -> status?.changeCount?.takeIf { it > 0 }?.let { t(countOf(it, "changed file"), "$it 个文件有改动") }.orEmpty()
+            }
+            Text(summary, fontSize = TypeScale.Caption, color = Palette.Muted, maxLines = 1)
+            Text(t("Collapse all", "全部折叠"), fontSize = TypeScale.Small, color = Palette.Muted,
+                modifier = Modifier.clip(RoundedCornerShape(5.dp)).hoverRow().clickable(enabled = !filtering && expanded.isNotEmpty()) { expanded = emptySet(); selected = selected?.substringBefore('/') }.padding(horizontal = 8.dp, vertical = 5.dp))
+            IconButton(Icons.Refresh) { revision++ }
+        }
+        HorizontalDivider()
+        TableHeader()
+        HorizontalDivider()
+        val now = rememberNowSeconds()
+        Box(Modifier.fillMaxWidth().weight(1f).focusRequester(listFocus).onKeyEvent(::onKey).focusable()) {
+            when {
+                filtering && scan == null -> AfterDelay { Message(t("Searching…", "正在搜索…"), Modifier.fillMaxSize()) }
+                filtering && rows.isEmpty() -> Message(
+                    t("No file names contain “${query.trim()}”", "没有名称包含“${query.trim()}”的文件") +
+                        if (!showIgnored) t(" (ignored files are hidden)", "（被忽略的文件已隐藏）") else "",
+                    Modifier.fillMaxSize())
+                !filtering && listings[""] == null -> AfterDelay { Message(t("Loading…", "正在读取…"), Modifier.fillMaxSize()) }
+                else -> {
+                    LazyColumn(Modifier.fillMaxSize().padding(end = 10.dp), state = listState, contentPadding = PaddingValues(vertical = 4.dp)) {
+                        items(rows, key = { it.key }) { row ->
+                            when (row) {
+                                is DirRow.Loading -> AfterDelay { RowNote(t("Loading…", "正在读取…"), row.depth) }
+                                is DirRow.Note -> RowNote(row.text, row.depth)
+                                is DirRow.Item -> TreeTableRow(
+                                    row, now, row.entry.path == selected,
+                                    onClick = { selected = row.entry.path; listFocus.requestFocus() },
+                                    onToggle = { selected = row.entry.path; toggle(row.entry); listFocus.requestFocus() },
+                                    onOpen = { openEntry(row.entry) },
+                                    onMenu = { selected = row.entry.path; menu = entryMenu(row.entry) },
                                 )
                             }
-                            is DirRow.Item -> {
-                                val e = row.entry
-                                TreeRow(
-                                    row.depth + 1, current == e.path, row.expanded.takeIf { row.hasSubdirs != false },
-                                    onToggle = { expanded = if (row.expanded) expanded - e.path else expanded + e.path },
-                                    onClick = { open(e.path) },
-                                ) {
-                                    val ink = if (e.ignored) Palette.Faint else Palette.Ink
-                                    Icon(Icons.Folder, if (e.ignored) Palette.Faint else Palette.Muted, size = 14.dp)
-                                    Text(e.name, fontSize = TypeScale.Body, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        textDecoration = if (e.missing) TextDecoration.LineThrough else null,
-                                        modifier = Modifier.weight(1f, fill = false))
-                                    if (e.dirty) Dot(Palette.Modified)
-                                }
-                            }
                         }
                     }
+                    VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
                 }
-                VerticalScrollbar(rememberScrollbarAdapter(treeState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
             }
         }
-        VerticalDivider()
-        // 右边：当前目录的文件表
-        Column(Modifier.weight(1f).fillMaxHeight().background(Palette.Panel)) {
-            Breadcrumb(rootName, current, onOpen = ::open)
-            HorizontalDivider()
-            TableHeader()
-            HorizontalDivider()
-            val listing = listings[current]
-            val now = rememberNowSeconds()
-            if (listing == null) {
-                Box(Modifier.fillMaxWidth().weight(1f)) {
-                    AfterDelay { Message(t("Loading…", "正在读取…"), Modifier.fillMaxSize()) }
-                }
-            } else {
-                val shown = remember(listing, showIgnored) { listing.entries.filter { showIgnored || !it.ignored } }
-                val hidden = listing.entries.size - shown.size
-                if (shown.isEmpty()) {
-                    Message(if (hidden > 0) t("Only ignored files here", "这里只有被忽略的文件") else t("Empty folder", "空文件夹"), Modifier.fillMaxWidth().weight(1f))
-                } else {
-                    val tableState = rememberLazyListState()
-                    LaunchedEffect(current) { tableState.scrollToItem(0) }
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
-                        LazyColumn(Modifier.fillMaxSize(), state = tableState) {
-                            items(shown, key = { it.path }) { e ->
-                                FileTableRow(
-                                    e, now, e.path == selected,
-                                    onClick = { selected = e.path },
-                                    onOpen = {
-                                        if (e.isDir) open(e.path)
-                                        else if (e.missing) onFailure(t("${e.name} was deleted", "${e.name} 已删除"), t("It's no longer on disk. You can restore it in Changes.", "磁盘上已经没有这个文件，可以在“本地改动”里恢复。"))
-                                        else systemOpen(e)
-                                    },
-                                    onMenu = {
-                                        selected = e.path
-                                        menu = entryMenu(e)
-                                    },
-                                )
-                            }
-                        }
-                        VerticalScrollbar(rememberScrollbarAdapter(tableState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
-                    }
-                }
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val parts = buildList {
-                        add(t(countOf(shown.size, "item"), "${shown.size} 项"))
-                        if (listing.omitted > 0) add(t("${listing.omitted} more not listed", "还有 ${listing.omitted} 项没有列出"))
-                        if (hidden > 0) add(t("${countOf(hidden, "ignored item")} hidden", "已隐藏 $hidden 个被忽略的"))
-                    }
-                    Text(parts.joinToString(" · "), fontSize = TypeScale.Caption, color = Palette.Faint, maxLines = 1)
-                }
-            }
+        HorizontalDivider()
+        Row(Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(selected ?: "", fontSize = TypeScale.Caption, fontFamily = CodeFont, color = Palette.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(t("↑↓ move · ←→ collapse/expand · Enter open · right-click for more", "上下键移动 · 左右键收起／展开 · 回车打开 · 右键更多"), fontSize = TypeScale.Caption, color = Palette.Faint, maxLines = 1)
         }
     }
     menu?.let { GitMenuPopup(it, onDismiss = { menu = null }) }
     dialog?.let { ActionDialog(it) { dialog = null } }
 }
-
-private fun treeIndent(depth: Int): Dp = (8 + 14 * depth).dp
 
 /** 读目录一般只要几毫秒，“正在读取”一闪而过反而像在闪烁，所以过一会儿还没读完才显示。之前不占位置。 */
 private const val LOADING_DELAY_MS = 200L
@@ -346,30 +348,11 @@ private fun AfterDelay(content: @Composable () -> Unit) {
     if (show) content()
 }
 
-/** 目录树的一行。expanded 为 null 时不画箭头（没有子目录）；onToggle 为 null 时这一行不能折叠（根目录）。 */
+/** 目录下面的提示行：空文件夹、还有多少项没列出、正在读取。 */
 @Composable
-private fun TreeRow(
-    depth: Int,
-    selected: Boolean,
-    expanded: Boolean?,
-    onToggle: (() -> Unit)?,
-    onClick: () -> Unit,
-    content: @Composable RowScope.() -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().height(24.dp).hoverRow().rowHighlight(selected).clickable(onClick = onClick)
-            .padding(start = treeIndent(depth), end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Box(
-            Modifier.size(14.dp).then(if (onToggle != null && expanded != null) Modifier.clickable(onClick = onToggle) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (onToggle != null && expanded != null) Chevron(expanded)
-        }
-        content()
-    }
+private fun RowNote(text: String, depth: Int) {
+    Text(text, fontSize = TypeScale.Small, color = Palette.Faint,
+        modifier = Modifier.height(26.dp).padding(start = 14.dp + 18.dp * depth + 38.dp).wrapContentHeight())
 }
 
 @Composable
@@ -384,29 +367,6 @@ private fun Chevron(expanded: Boolean) {
             lineTo(c.x - arm / 2, c.y + arm)
         }
         drawPath(path, color, style = Stroke(1.5.dp.toPx()))
-    }
-}
-
-/** 当前目录的路径，每一段都能点，回到那一级。 */
-@Composable
-private fun Breadcrumb(rootName: String, current: String, onOpen: (String) -> Unit) {
-    val parts = if (current.isEmpty()) emptyList() else current.split('/')
-    Row(
-        Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        val segments = listOf("" to rootName) + parts.indices.map { i -> parts.take(i + 1).joinToString("/") to parts[i] }
-        segments.forEachIndexed { i, (path, name) ->
-            if (i > 0) Text("/", fontSize = TypeScale.Small, color = Palette.Faint)
-            val last = i == segments.lastIndex
-            Text(
-                name, fontSize = TypeScale.Small, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                fontWeight = if (last) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (last) Palette.Ink else Palette.Muted,
-                modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(enabled = !last) { onOpen(path) }.padding(horizontal = 4.dp, vertical = 2.dp),
-            )
-        }
     }
 }
 
@@ -425,23 +385,40 @@ private fun HeaderCell(text: String, width: Dp) {
     Text(text, fontSize = TypeScale.Caption, color = Palette.Faint, textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(width))
 }
 
+/** 树表的一行：缩进、展开箭头、图标、名字（筛选时高亮匹配的一段），右边是状态、大小、修改时间。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileTableRow(entry: FileEntry, now: Long, selected: Boolean, onClick: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit) {
+private fun TreeTableRow(item: DirRow.Item, now: Long, selected: Boolean, onClick: () -> Unit, onToggle: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit) {
+    val entry = item.entry
     val ink = if (entry.ignored) Palette.Faint else Palette.Ink
     Row(
-        Modifier.fillMaxWidth().height(28.dp).hoverRow().rowHighlight(selected)
+        Modifier.fillMaxWidth().height(30.dp).hoverRow().rowHighlight(selected)
             .onRightClick(onMenu)
             .combinedClickable(onClick = onClick, onDoubleClick = onOpen)
-            .padding(start = 14.dp, end = 14.dp),
+            .padding(start = 14.dp + 18.dp * item.depth, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(if (entry.isDir) Icons.Folder else Icons.File, if (entry.ignored) Palette.Faint else Palette.Muted, size = 14.dp)
-            Text(entry.name, fontSize = TypeScale.Body, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(14.dp).then(if (item.expanded != null) Modifier.clickable(onClick = onToggle) else Modifier), contentAlignment = Alignment.Center) {
+                item.expanded?.let { Chevron(it) }
+            }
+            Icon(if (entry.isDir) Icons.Folder else Icons.File, if (entry.ignored) Palette.Faint else Palette.Muted, size = 15.dp)
+            val name = remember(entry.name, item.hit) {
+                buildAnnotatedString {
+                    val hit = item.hit
+                    if (hit == null) append(entry.name) else {
+                        append(entry.name.substring(0, hit.first))
+                        withStyle(SpanStyle(background = Palette.Raised, fontWeight = FontWeight.SemiBold)) { append(entry.name.substring(hit.first, hit.last + 1)) }
+                        append(entry.name.substring(hit.last + 1))
+                    }
+                }
+            }
+            Text(name, fontSize = TypeScale.Body, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontWeight = if (entry.isDir) FontWeight.Medium else FontWeight.Normal,
                 textDecoration = if (entry.missing) TextDecoration.LineThrough else null,
                 modifier = Modifier.weight(1f, fill = false))
-            badgeCode(entry.mark)?.let { val (tag, color) = statusBadge(it); ChangeBadge(tag, color) }
+            // 文件夹里有改动：只在名字后面加一个小黄点，状态列留给文件本身
+            if (entry.isDir && entry.dirty && !entry.ignored) Dot(Palette.Modified)
         }
         val (label, color) = statusLabel(entry)
         Text(label, fontSize = TypeScale.Small, color = color, textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(StatusColumn))
@@ -453,17 +430,6 @@ private fun FileTableRow(entry: FileEntry, now: Long, selected: Boolean, onClick
     }
 }
 
-/** 行里的 M、A、D 小标记，和本地改动页一样。 */
-private fun badgeCode(mark: FileMark): Char? = when (mark) {
-    FileMark.MODIFIED -> 'M'
-    FileMark.ADDED -> 'A'
-    FileMark.DELETED, FileMark.REMOVED -> 'D'
-    FileMark.RENAMED -> 'R'
-    FileMark.UNTRACKED -> '?'
-    FileMark.CONFLICTED -> 'U'
-    FileMark.CLEAN, FileMark.IGNORED -> null
-}
-
 private fun statusLabel(e: FileEntry): Pair<String, Color> = when (e.mark) {
     FileMark.MODIFIED -> t("Modified", "已修改") to Palette.Modified
     FileMark.ADDED -> t("Added", "新增") to Palette.Added
@@ -473,7 +439,7 @@ private fun statusLabel(e: FileEntry): Pair<String, Color> = when (e.mark) {
     FileMark.CONFLICTED -> t("Conflict", "冲突") to Palette.Removed
     FileMark.REMOVED -> t("Untracked now", "已移出版本库") to Palette.Removed
     FileMark.IGNORED -> (if (e.ignoredRoot) t("Ignored", "已忽略") else "") to Palette.Faint
-    FileMark.CLEAN -> (if (e.dirty) t("Has changes", "有改动") else "") to Palette.Modified
+    FileMark.CLEAN -> "" to Palette.Modified
 }
 
 /** 用系统默认程序打开。 */

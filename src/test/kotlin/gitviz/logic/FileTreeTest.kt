@@ -142,91 +142,96 @@ class FileTreeTest {
         assertEquals(3, l.omitted)
     }
 
+    private fun label(r: DirRow) = "  ".repeat(r.depth) + when (r) {
+        is DirRow.Item -> r.entry.name + (if (r.expanded == true) "/" else if (r.expanded == false) "›" else "")
+        is DirRow.Loading -> "…"
+        is DirRow.Note -> "(" + r.text + ")"
+    }
+
     @Test
-    fun `flattened tree has only folders and hides ignored ones on request`() {
+    fun `flattened tree mixes folders and files and hides ignored ones on request`() {
         val cli = repo()
-        write("build/sub/out.txt")
+        write("build/sub/out.txt"); write("debug.log")
         val status = TreeStatus(cli.treeStatus())
         val listings = listOf("", "src").associateWith { listDirectory(root, it, status) }
-        fun rows(showIgnored: Boolean, expanded: Set<String>) = flattenDirTree(listings, expanded, showIgnored).map {
-            when (it) {
-                is DirRow.Item -> "  ".repeat(it.depth) + it.entry.name
-                is DirRow.Loading -> "  ".repeat(it.depth) + "…"
-            }
-        }
-        assertEquals(listOf("build", "src"), rows(true, emptySet()))
-        assertEquals(listOf("src"), rows(false, emptySet()))
-        // src/old 还没读过，但列 src 时已经知道它里面没有子目录，展开了也不出“正在读取”
-        assertEquals(listOf("build", "src", "  old"), rows(true, setOf("src", "src/old")))
-        // 有子目录、还没读过的才先放一行“正在读取”
-        assertEquals(listOf("build", "  …", "src"), rows(true, setOf("build")))
-    }
-
-    private fun subdirs(l: DirListing, name: String) = l.entries.first { it.name == name }.subdirs!!.let { it.any to it.visible }
-
-    @Test
-    fun `knows which folders have subfolders before opening them`() {
-        val cli = repo()
-        write("build/out/app.jar")
-        write("design/logo.svg")
-        val top = listing(cli, "")
-        assertEquals(true to true, subdirs(top, "src"))      // src/old
-        assertEquals(false to false, subdirs(top, "design"))  // 只有文件
-        assertEquals(true to false, subdirs(top, "build"))    // 自己被忽略，隐藏被忽略的时候不出现
-        assertEquals(null, top.entries.first { it.name == "README.md" }.subdirs)
+        fun rows(showIgnored: Boolean, expanded: Set<String>) = flattenDirTree(listings, expanded, showIgnored).map(::label)
+        assertEquals(listOf("build›", "src›", ".gitignore", "debug.log", "README.md"), rows(true, emptySet()))
+        assertEquals(listOf("src›", ".gitignore", "README.md"), rows(false, emptySet()))
+        // 展开 src：目录在前，里面的文件跟在后面
+        assertEquals(listOf("build›", "src/", "  old›", "  a.kt", "  b.kt", ".gitignore", "debug.log", "README.md"), rows(true, setOf("src")))
+        // build 还没读过：先放一行“正在读取”
+        assertEquals(listOf("build/", "  …", "src›", ".gitignore", "debug.log", "README.md"), rows(true, setOf("build")))
     }
 
     @Test
-    fun `ignored subfolders only count when ignored files are shown`() {
+    fun `an open folder says when it is empty or only has hidden ignored files`() {
         val cli = repo()
-        write("lib/build/x.class") // lib/build 被 build/ 规则忽略
-        write("lib/a.kt")
-        assertEquals(true to false, subdirs(listing(cli, ""), "lib"))
-    }
-
-    @Test
-    fun `deleted subfolders still count`() {
-        val cli = repo()
-        File(root, "src/old").deleteRecursively()
-        assertEquals(true to true, subdirs(listing(cli, ""), "src"))
-    }
-
-    @Test
-    fun `probing stops at the limits and says it doesn't know`() {
-        val cli = repo()
-        repeat(5) { write("flat/f$it") }
-        repeat(3) { write("d$it/x") }
+        File(root, "empty").mkdirs()
+        write("only/x.log")
         val status = TreeStatus(cli.treeStatus())
-        // 每个子目录只看 2 项：flat 里 5 个文件看不完，不确定
-        assertEquals(null to null, subdirs(listDirectory(root, "", status, ProbeLimits(perDir = 2)), "flat"))
-        // 只看 1 个子目录：排在后面的都不确定
-        val one = listDirectory(root, "", status, ProbeLimits(maxDirs = 1))
-        assertEquals(false to false, subdirs(one, "d0"))
-        assertEquals(null to null, subdirs(one, "d1"))
-        // 总预算 1 项：第一个看完，后面的不确定
-        val tight = listDirectory(root, "", status, ProbeLimits(budget = 1))
-        assertEquals(false to false, subdirs(tight, "d0"))
-        assertEquals(null to null, subdirs(tight, "d2"))
-    }
-
-    @Test
-    fun `folders without subfolders get no arrow and never show loading`() {
-        val cli = repo()
-        write("design/logo.svg")
-        val status = TreeStatus(cli.treeStatus())
-        val listings = mapOf("" to listDirectory(root, "", status))
-        // design 已知没有子目录：即使在展开列表里，也不往下摊，不出“正在读取”
-        val rows = flattenDirTree(listings, setOf("design", "src"), showIgnored = true)
-        val design = rows.filterIsInstance<DirRow.Item>().first { it.entry.name == "design" }
-        assertEquals(false, design.hasSubdirs)
-        assertFalse(design.expanded)
-        assertEquals(1, rows.count { it is DirRow.Loading }) // 只有 src 下面那一行
+        val listings = listOf("", "empty", "only").associateWith { listDirectory(root, it, status) }
+        val shown = flattenDirTree(listings, setOf("empty", "only"), showIgnored = true).map(::label)
+        assertTrue("  (Empty folder)" in shown)
+        assertFalse(shown.any { it.contains("Only ignored") })
+        assertTrue("  (Only ignored files here)" in flattenDirTree(listings, setOf("only"), showIgnored = false).map(::label))
     }
 
     @Test
     fun `reads only folders whose parents are all open`() {
-        assertEquals(listOf("", "a", "a/b", "x/y"), directoriesToRead(setOf("a", "a/b", "c/d"), "x/y"))
+        assertEquals(listOf("", "a", "a/b"), directoriesToRead(setOf("a", "a/b", "c/d")))
         assertEquals(listOf("a/b", "a"), ancestorsOf("a/b/c"))
+    }
+
+    @Test
+    fun `scan reads every folder but does not enter ignored or deleted ones`() {
+        val cli = repo()
+        write("build/deep/inner/x.txt"); write("src/old/deeper/y.kt")
+        File(root, "src/old").renameTo(File(root, "src/moved")) // old 从磁盘消失，git 里还有记录
+        val scan = scanWorkTree(root, TreeStatus(cli.treeStatus()))
+        assertFalse(scan.truncated)
+        assertTrue("src/moved/deeper" in scan.listings)
+        assertTrue("build" !in scan.listings, "ignored folder is listed in its parent but never entered")
+        assertTrue(scan.listings.getValue("").entries.any { it.name == "build" })
+        assertTrue("src/old" !in scan.listings, "a folder that is only in git is not entered")
+    }
+
+    @Test
+    fun `scan stops at the entry limit and says so`() {
+        val cli = repo()
+        repeat(4) { write("d$it/a"); write("d$it/b") }
+        val scan = scanWorkTree(root, TreeStatus(cli.treeStatus()), maxEntries = 6)
+        assertTrue(scan.truncated)
+        assertTrue(scan.listings.size < 6)
+        assertFalse(scanWorkTree(root, TreeStatus(cli.treeStatus())).truncated)
+        var calls = 0
+        val cancelled = scanWorkTree(root, TreeStatus(cli.treeStatus()), cancelled = { calls++ >= 2 })
+        assertFalse(cancelled.listings.isEmpty()); assertTrue(cancelled.listings.size < scanWorkTree(root, TreeStatus(cli.treeStatus())).listings.size)
+    }
+
+    @Test
+    fun `filter keeps matches and their parents, expands them and marks the hit`() {
+        val cli = repo()
+        write("src/deep/inner/Target.kt"); write("docs/readme.txt")
+        val scan = scanWorkTree(root, TreeStatus(cli.treeStatus()))
+        val rows = filterTree(scan, "target", showIgnored = true)
+        assertEquals(listOf("src/", "  deep/", "    inner/", "      Target.kt"), rows.map(::label), "case-insensitive, all parents open, nothing else")
+        val hit = (rows.last() as DirRow.Item).hit
+        assertEquals(0 until 6, hit)
+        // 目录名本身匹配：只带出它自己，里面名字不匹配的不出现
+        assertEquals(listOf("src/", "  old›"), filterTree(scan, "old", true).map(::label))
+        assertEquals(emptyList(), filterTree(scan, "zzz", true))
+        assertEquals(emptyList(), filterTree(scan, "   ", true), "blank query is no filter")
+    }
+
+    @Test
+    fun `filter hides ignored matches when ignored files are hidden`() {
+        val cli = repo()
+        write("build/target.bin"); write("notes/target.txt"); write("target.log")
+        val scan = scanWorkTree(root, TreeStatus(cli.treeStatus()))
+        assertEquals(listOf("notes/", "  target.txt", "target.log"), filterTree(scan, "target", showIgnored = true).map(::label).filter { !it.startsWith("build") && !it.contains("bin") })
+        assertEquals(listOf("notes/", "  target.txt"), filterTree(scan, "target", showIgnored = false).map(::label))
+        // 被忽略的目录不会被扫进去，里面的 target.bin 搜不到
+        assertTrue(filterTree(scan, "target.bin", showIgnored = true).isEmpty())
     }
 
     @Test

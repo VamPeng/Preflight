@@ -42,6 +42,14 @@
       "w": 1360,
       "x": 0,
       "y": 0
+    },
+    "Files.dc.html": {
+      "h": 860,
+      "is_interactive": true,
+      "title": "文件 · 树表",
+      "w": 1360,
+      "x": 2880,
+      "y": 0
     }
   },
   "createdOnFiles": {
@@ -57,13 +65,20 @@
   "order": [
     "Main.dc.html",
     "Welcome.dc.html",
+    "Files.dc.html",
     "Conflict.dc.html",
     "Settings.dc.html",
     "Schemes.dc.html"
   ],
   "pages": [
-    { "id": "mvp", "name": "MVP" },
-    { "id": "hidden", "name": "已隐藏" }
+    {
+      "id": "mvp",
+      "name": "MVP"
+    },
+    {
+      "id": "hidden",
+      "name": "已隐藏"
+    }
   ],
   "title": "GitViz 原型"
 }

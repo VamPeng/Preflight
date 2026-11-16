@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>GitViz 文件</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent-ink);outline-offset:-2px}
+.hv:hover{background:var(--hover)!important}
+.tool:hover{background:var(--raised)}
+.seg:hover{color:var(--ink)}
+.chr:hover .ck{background:linear-gradient(var(--hover),var(--hover)),var(--ground)!important}
+@keyframes gv-spin{to{transform:rotate(360deg)}}
+input::placeholder{color:var(--faint)}
+.t-light{--node:#FFFFFF;--field:#FFFFFF;--add:#1A7F4B;--del:#CF222E;--warn:#9A6700}
+.t-dark{--add:#3FB950;--del:#F85149;--warn:#D29922}
+.s-blue.t-light{--ground:#FFFFFF;--rail:#F3F4F6;--panel:#FAFAFB;--line:#E1E3E8;--raised:rgba(47,111,237,0.14);--hover:rgba(47,111,237,0.07);--ink:#1C1E23;--muted:#5A606B;--faint:#6B717C;--accent:#2F6FED;--accent-ink:#1F56C4;--on-accent:#FFFFFF;--link:#1F56C4}
+.s-blue.t-dark{--ground:#1E2024;--rail:#17191C;--panel:#1A1C20;--field:#26292E;--line:#33363D;--raised:rgba(76,141,255,0.18);--hover:rgba(76,141,255,0.09);--ink:#E8EAED;--muted:#A3A8B2;--faint:#8B919C;--node:#E8EAED;--accent:#4C8DFF;--accent-ink:#8AB4FF;--on-accent:#0E1726;--link:#8AB4FF}
+.s-graphite.t-light{--ground:#F7F7F6;--rail:#ECECEA;--panel:#F2F2F0;--line:#DADAD6;--raised:rgba(194,87,12,0.13);--hover:rgba(194,87,12,0.07);--ink:#1F1F1E;--muted:#5C5C58;--faint:#6C6C68;--accent:#C2570C;--accent-ink:#A54A0A;--on-accent:#FFFFFF;--link:#1F56C4}
+.s-graphite.t-dark{--ground:#232323;--rail:#1B1B1B;--panel:#1F1F1F;--field:#2C2C2C;--line:#3A3A3A;--raised:rgba(240,138,60,0.17);--hover:rgba(240,138,60,0.09);--ink:#EAEAE8;--muted:#A8A8A4;--faint:#92928E;--node:#EAEAE8;--accent:#F08A3C;--accent-ink:#F7AE74;--on-accent:#241203;--link:#8AB4FF}
+.s-indigo.t-light{--ground:#FBFBFD;--rail:#EEF0F6;--panel:#F5F6FA;--line:#DDE1EC;--raised:rgba(58,79,163,0.13);--hover:rgba(58,79,163,0.07);--ink:#1A1E2C;--muted:#555C70;--faint:#666D80;--accent:#3A4FA3;--accent-ink:#2F4190;--on-accent:#FFFFFF;--link:#2F4190}
+.s-indigo.t-dark{--ground:#1A1D2B;--rail:#141622;--panel:#171926;--field:#232738;--line:#2F3448;--raised:rgba(124,143,232,0.18);--hover:rgba(124,143,232,0.09);--ink:#E7E9F2;--muted:#A5AABD;--faint:#8D93A8;--node:#E7E9F2;--accent:#7C8FE8;--accent-ink:#A7B4F2;--on-accent:#12162B;--link:#A7B4F2}
+.s-violet.t-light{--ground:#FFFFFF;--rail:#F4F2F8;--panel:#FAF9FC;--line:#E4E0EC;--raised:rgba(109,79,196,0.13);--hover:rgba(109,79,196,0.07);--ink:#1E1B26;--muted:#5D5870;--faint:#6E6980;--accent:#6D4FC4;--accent-ink:#5A3FAE;--on-accent:#FFFFFF;--link:#5A3FAE}
+.s-violet.t-dark{--ground:#1F1C26;--rail:#18161E;--panel:#1B1922;--field:#292530;--line:#37323F;--raised:rgba(164,139,240,0.18);--hover:rgba(164,139,240,0.09);--ink:#ECE9F2;--muted:#ABA6B8;--faint:#9590A3;--node:#ECE9F2;--accent:#A48BF0;--accent-ink:#C3B1F7;--on-accent:#1A1230;--link:#C3B1F7}
+.s-pine.t-light{--ground:#FFFFFF;--rail:#F2F3F1;--panel:#F9FAF8;--line:#E0E2DD;--raised:rgba(47,111,91,0.13);--hover:rgba(47,111,91,0.07);--ink:#1C1F1C;--muted:#5A605A;--faint:#6B716B;--accent:#2F6F5B;--accent-ink:#27604E;--on-accent:#FFFFFF;--link:#1F56C4}
+.s-pine.t-dark{--ground:#1E201E;--rail:#171917;--panel:#1A1C1A;--field:#272A27;--line:#343834;--raised:rgba(111,191,165,0.17);--hover:rgba(111,191,165,0.09);--ink:#E8EBE8;--muted:#A5ABA5;--faint:#8E948E;--node:#E8EBE8;--accent:#6FBFA5;--accent-ink:#97D4C0;--on-accent:#0E211A;--link:#8AB4FF}
+.list:focus{outline:none}
+</style>
+</helmet>
+<div data-gv-root="1" class="{{themeClass}}" style="position:relative;width:1360px;height:860px;box-sizing:border-box;display:flex;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--ground);color:var(--ink);font:14px/1.4 -apple-system,'PingFang SC','Helvetica Neue',sans-serif">
+
+  <!-- 左侧栏：和主窗口一样，「文件」选中 -->
+  <div style="width:248px;flex:none;display:flex;flex-direction:column;background:var(--rail);border-right:1px solid var(--line)">
+    <div style="height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 18px">
+      <span style="width:12px;height:12px;border-radius:50%;background:#FF5F57"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#FEBC2E"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#28C840"></span>
+    </div>
+    <div style="flex:none;padding:0 6px 6px;display:flex;flex-direction:column;gap:1px">
+      <sc-for list="{{nav}}" as="w" hint-placeholder-count="5">
+        <a href="{{w.href}}" class="hv" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:5px;background:{{w.bg}};color:var(--ink);text-decoration:none">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{w.stroke}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{w.icon}}"/></svg>
+          <span style="flex:1;font-weight:{{w.weight}}">{{w.label}}</span>
+          <span style="display:{{w.badgeDisplay}};min-width:18px;padding:0 5px;height:17px;line-height:17px;border-radius:9px;background:var(--accent);color:var(--on-accent);font-size:12px;font-weight:600;text-align:center">{{w.badge}}</span>
+        </a>
+      </sc-for>
+    </div>
+    <div style="flex:1;border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:10px">
+      <span>› 本地分支　4</span><span>› 远程　3</span><span>› 标签　2</span>
+    </div>
+  </div>
+
+  <!-- 主区域 -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div style="height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px 0 18px;border-bottom:1px solid var(--line)">
+      <span style="font-size:17px;font-weight:600">gitviz</span>
+      <span style="padding:3px 10px;border-radius:5px;background:var(--raised);color:var(--accent-ink);font-size:13px;font-weight:600">main</span>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:var(--faint)">工具栏按钮和搜索框同主窗口，略</span>
+    </div>
+
+    <!-- 文件页自己的工具条：筛选、显示被忽略的、全部折叠、刷新 -->
+    <div style="height:44px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line)">
+      <label for="file-filter" style="display:flex;align-items:center;gap:6px;width:300px;height:30px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:var(--rail);box-sizing:border-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3"/></svg>
+        <input id="file-filter" value="{{filter}}" onInput="{{onFilter}}" placeholder="按名称筛选，匹配的路径自动展开" aria-label="按名称筛选文件" style="flex:1;min-width:0;background:none;border:0;color:var(--ink);font:inherit;font-size:13px">
+        <button onClick="{{clearFilter}}" aria-label="清除筛选" style="display:{{clearDisplay}};color:var(--faint);font-size:13px">✕</button>
+      </label>
+      <button onClick="{{toggleIgnored}}" aria-pressed="{{ignPressed}}" style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted)">
+        <span style="width:15px;height:15px;border-radius:4px;box-sizing:border-box;border:1.5px solid {{ignBorder}};background:{{ignBg}};display:flex;align-items:center;justify-content:center">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--on-accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:{{ignCheck}}"><path d="M20 6L9 17l-5-5"/></svg>
+        </span>
+        显示被忽略的
+      </button>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:var(--muted)">{{summary}}</span>
+      <button class="hv" onClick="{{collapseAll}}" style="height:28px;padding:0 10px;border-radius:5px;font-size:13px;color:var(--muted)">全部折叠</button>
+      <button class="hv" onClick="{{refresh}}" aria-label="刷新" title="刷新" style="width:28px;height:28px;border-radius:5px;display:flex;align-items:center;justify-content:center">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5"/></svg>
+      </button>
+    </div>
+
+    <!-- 表头 -->
+    <div style="height:28px;flex:none;display:flex;align-items:center;padding:0 18px 0 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--faint)">
+      <span style="flex:1">名称</span><span style="width:120px">状态</span><span style="width:90px;text-align:right">大小</span><span style="width:120px;text-align:right">修改时间</span>
+    </div>
+
+    <!-- 一棵带列的树：文件夹原地展开，不再分左右两栏 -->
+    <div class="list" tabindex="0" onKeyDown="{{onKey}}" aria-label="文件列表，上下键移动，左右键收起展开，回车打开" style="flex:1;min-height:0;overflow:auto;padding:4px 0">
+      <div style="display:{{emptyDisplay}};padding:28px 18px;font-size:13px;color:var(--muted)">{{emptyText}}</div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="18">
+        <div class="hv" onClick="{{r.pick}}" onDoubleClick="{{r.dbl}}" onContextMenu="{{r.menu}}" title="{{r.tip}}" style="display:flex;align-items:center;height:30px;padding:0 18px 0 14px;background:{{r.bg}};box-shadow:{{r.bar}};cursor:default;user-select:none">
+          <span style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding-left:{{r.pad}}">
+            <button onClick="{{r.toggle}}" aria-label="{{r.toggleLabel}}" aria-expanded="{{r.openText}}" style="width:14px;height:14px;flex:none;display:flex;align-items:center;justify-content:center;visibility:{{r.chevVis}}">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{r.rot}})"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{r.iconColor}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="{{r.icon}}"/></svg>
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{{r.fg}};font-weight:{{r.weight}}">{{r.pre}}<span style="background:{{r.hitBg}};border-radius:2px;font-weight:600">{{r.hit}}</span>{{r.post}}</span>
+            <span style="display:{{r.dotDisplay}};width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none"></span>
+          </span>
+          <span style="width:120px;font-size:13px;color:{{r.statusFg}}">{{r.status}}</span>
+          <span style="width:90px;text-align:right;font-size:13px;color:var(--muted)">{{r.size}}</span>
+          <span style="width:120px;text-align:right;font-size:13px;color:var(--muted)">{{r.time}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="height:26px;flex:none;display:flex;align-items:center;gap:16px;padding:0 14px;border-top:1px solid var(--line);background:var(--rail);font-size:12px;color:var(--muted)">
+      <span style="font-family:Menlo,ui-monospace,monospace">{{selPath}}</span>
+      <span style="flex:1"></span><span>上下键移动 · 左右键收起／展开 · 回车打开 · 右键更多</span>
+    </div>
+  </div>
+
+  <!-- 右键菜单 -->
+  <div onClick="{{closeCtx}}" onContextMenu="{{closeCtx}}" style="position:absolute;inset:0;z-index:9;display:{{ctxDisplay}}">
+    <div role="menu" aria-label="文件操作" style="position:absolute;left:{{ctxX}};top:{{ctxY}};width:260px;box-sizing:border-box;padding:4px;border-radius:7px;border:1px solid var(--line);background:var(--field);box-shadow:0 12px 32px rgba(0,0,0,0.3);font-size:13px">
+      <sc-for list="{{ctxItems}}" as="m" hint-placeholder-count="8">
+        <div style="display:{{m.sepDisplay}};height:1px;margin:4px 6px;background:var(--line)"></div>
+        <button role="menuitem" class="hv" onClick="{{m.run}}" style="display:{{m.btnDisplay}};align-items:center;width:100%;height:28px;padding:0 10px;box-sizing:border-box;border-radius:4px;color:{{m.fg}}">{{m.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- 操作反馈：右下角卡片 -->
+  <div role="status" style="display:{{toastDisplay}};position:absolute;right:16px;bottom:40px;align-items:center;gap:10px;max-width:520px;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--field);box-shadow:0 8px 24px rgba(0,0,0,0.25);font-size:13px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--add)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+    {{toast}}
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":860}}'>
+class Component extends DCLogic {
+  readScheme() {
+    try { return localStorage.getItem('gitviz-scheme-v2') || 'graphite'; } catch (e) { return 'graphite'; }
+  }
+
+  readTheme() {
+    try { return localStorage.getItem('gitviz-theme') || 'light'; } catch (e) { return 'light'; }
+  }
+
+  constructor(props) {
+    super(props);
+    this.state = {
+      theme: this.readTheme(), scheme: this.readScheme(),
+      // 记住展开了哪些文件夹
+      open: { 'src': true, 'src/main': true, 'src/main/kotlin': true, 'src/main/kotlin/gitviz': true },
+      sel: 'src/main/kotlin/gitviz/Main.kt', filter: '', showIgnored: true, ctx: null, toast: '',
+    };
+    // 示例数据。st：M 已修改，A 新增，U 未跟踪，I 被忽略
+    const D = (name, kids, extra) => Object.assign({ name, dir: true, kids }, extra || {});
+    const F = (name, size, time, st) => ({ name, dir: false, size, time, st: st || '' });
+    this.tree = [
+      D('.gradle', [F('file-system.probe', '8 B', '3 天前')], { st: 'I', time: '3 天前' }),
+      D('build', [D('classes', [F('Main.class', '84 KB', '1 小时前')], { time: '1 小时前' }), D('screens', [F('dark.png', '802 KB', '1 小时前')], { time: '1 小时前' })], { st: 'I', time: '1 小时前' }),
+      D('design', [D('icon', [F('gitviz.svg', '2.1 KB', '12 天前')], { time: '12 天前' })], { time: '12 天前' }),
+      D('docs', [
+        D('prototype', [F('Main.dc.html', '96 KB', '刚刚', 'M'), F('Files.dc.html', '18 KB', '刚刚', 'U'), F('support.js', '8.3 KB', '12 天前')], { time: '刚刚' }),
+        F('PLAN.md', '24 KB', '2 小时前', 'M'), F('ROADMAP.md', '15 KB', '2 小时前'),
+      ], { time: '刚刚' }),
+      D('gradle', [D('wrapper', [F('gradle-wrapper.properties', '252 B', '17 天前')], { time: '17 天前' })], { time: '17 天前' }),
+      D('scripts', [F('playground.sh', '4.2 KB', '12 天前')], { time: '12 天前' }),
+      D('src', [
+        D('main', [D('kotlin', [D('gitviz', [
+          D('git', [F('GitCli.kt', '22 KB', '1 天前'), F('GitRepo.kt', '19 KB', '2 小时前', 'M'), F('Worktrees.kt', '4.4 KB', '3 天前')], { time: '2 小时前' }),
+          D('ui', [
+            D('history', [F('CommitList.kt', '15 KB', '2 小时前', 'M'), F('Sidebar.kt', '12 KB', '1 天前')], { time: '2 小时前' }),
+            D('tools', [F('FilesView.kt', '21 KB', '5 天前')], { time: '5 天前' }),
+            F('AppBars.kt', '9.8 KB', '1 小时前', 'M'), F('Theme.kt', '7.1 KB', '1 天前'),
+          ], { time: '1 小时前' }),
+          F('Main.kt', '51 KB', '1 小时前', 'M'),
+        ], { time: '1 小时前' })], { time: '1 小时前' })], { time: '1 小时前' }),
+        D('test', [D('kotlin', [D('gitviz', [F('FilesTreeTest.kt', '3.0 KB', '刚刚', 'A')], { time: '刚刚' })], { time: '刚刚' })], { time: '刚刚' }),
+      ], { time: '刚刚' }),
+      F('.gitignore', '61 B', '12 天前'), F('AGENTS.md', '674 B', '12 天前'), F('build.gradle.kts', '3.0 KB', '12 天前'),
+      F('local.properties', '120 B', '9 天前', 'I'), F('notes.txt', '1.2 KB', '20 分钟前', 'U'), F('README.md', '12 KB', '2 小时前', 'M'),
+    ];
+    const walk = (list, parent) => list.forEach((n) => {
+      n.path = parent ? parent + '/' + n.name : n.name;
+      n.parent = parent;
+      if (n.dir) walk(n.kids, n.path);
+    });
+    walk(this.tree, '');
+  }
+
+  renderVals() {
+    const s = this.state;
+    const set = (patch) => this.setState(patch);
+    const flash = (msg, extra) => {
+      set(Object.assign({ toast: msg, ctx: null }, extra || {}));
+      clearTimeout(this.toastTimer);
+      this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2200);
+    };
+    const STATUS = { M: ['已修改', 'var(--warn)'], A: ['新增', 'var(--add)'], U: ['未跟踪', 'var(--link)'], I: ['已忽略', 'var(--faint)'] };
+    // 文件夹的状态：本身被忽略写「已忽略」；里面有改动只加黄点
+    const changed = (n) => (n.dir ? n.kids.some((k) => k.st !== 'I' && changed(k)) : ['M', 'A', 'U'].includes(n.st));
+    const ignored = (n) => n.st === 'I';
+    const q = s.filter.trim().toLowerCase();
+    // 筛选：留下名字匹配的条目和它们的上级文件夹，上级全部展开
+    const matches = (n) => n.name.toLowerCase().includes(q);
+    const keep = (n) => matches(n) || (n.dir && n.kids.some(keep));
+    const visible = (n) => (s.showIgnored || !ignored(n)) && (!q || keep(n));
+    const isOpen = (n) => n.dir && (q ? n.kids.some(keep) : !!s.open[n.path]);
+    const flat = [];
+    const add = (list, depth) => {
+      const sorted = list.slice().sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
+      sorted.filter(visible).forEach((n) => {
+        flat.push({ n, depth });
+        if (isOpen(n)) add(n.kids, depth + 1);
+      });
+    };
+    add(this.tree, 0);
+
+    const toggleOpen = (n) => set({ open: Object.assign({}, s.open, { [n.path]: !s.open[n.path] }) });
+    const ctxAt = (e) => {
+      e.preventDefault();
+      const root = e.currentTarget.closest('[data-gv-root]').getBoundingClientRect();
+      const k = root.width / 1360;
+      return { x: Math.min((e.clientX - root.left) / k, 1360 - 268), y: Math.min((e.clientY - root.top) / k, 860 - 330) };
+    };
+    const rows = flat.map(({ n, depth }) => {
+      const on = s.sel === n.path;
+      const st = n.dir ? (ignored(n) ? 'I' : '') : n.st;
+      const dirChanged = n.dir && !ignored(n) && changed(n);
+      const name = n.name, i = q ? name.toLowerCase().indexOf(q) : -1;
+      const open = isOpen(n);
+      return {
+        pad: (depth * 18) + 'px',
+        chevVis: n.dir ? 'visible' : 'hidden', rot: open ? '90deg' : '0deg', open, toggleLabel: (open ? '收起 ' : '展开 ') + name, openText: n.dir ? String(open) : 'false',
+        toggle: (e) => { e.stopPropagation(); if (n.dir && !q) toggleOpen(n); },
+        icon: n.dir ? 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' : 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6',
+        iconColor: ignored(n) ? 'var(--faint)' : 'var(--muted)',
+        pre: i >= 0 ? name.slice(0, i) : name, hit: i >= 0 ? name.slice(i, i + q.length) : '', post: i >= 0 ? name.slice(i + q.length) : '',
+        hitBg: i >= 0 ? 'var(--raised)' : 'transparent',
+        fg: ignored(n) ? 'var(--faint)' : 'var(--ink)', weight: n.dir ? 500 : 400,
+        dotDisplay: dirChanged ? 'block' : 'none',
+        // 文件夹里有改动只在名字后加黄点，状态列留给文件本身，免得每一层上级都写一遍
+        status: st ? STATUS[st][0] : '', statusFg: st ? STATUS[st][1] : 'var(--muted)',
+        size: n.dir ? '' : n.size, time: n.time || '',
+        tip: n.path,
+        bg: on ? 'var(--raised)' : 'transparent', bar: on ? 'inset 2px 0 0 var(--accent)' : 'none',
+        pick: () => set({ sel: n.path }),
+        dbl: () => (n.dir ? (q ? null : toggleOpen(n)) : flash('用默认程序打开 ' + n.name)),
+        menu: (e) => set({ sel: n.path, ctx: Object.assign(ctxAt(e), { path: n.path }) }),
+      };
+    });
+
+    // 右键菜单：和现在的文件页一样
+    const all = []; const index = (list) => list.forEach((n) => { all.push(n); if (n.dir) index(n.kids); }); index(this.tree);
+    const cur = all.find((n) => n.path === (s.ctx && s.ctx.path));
+    const item = (label, run) => ({ label, run, fg: 'var(--ink)', sepDisplay: 'none', btnDisplay: 'flex' });
+    const sep = { label: '', run: () => {}, fg: '', sepDisplay: 'block', btnDisplay: 'none' };
+    let ctxItems = [];
+    if (cur) {
+      ctxItems = [
+        item(cur.dir ? (isOpen(cur) ? '收起' : '展开') : '用默认程序打开', () => (cur.dir ? set({ ctx: null, open: Object.assign({}, s.open, { [cur.path]: !s.open[cur.path] }) }) : flash('用默认程序打开 ' + cur.name))),
+        item('在 Finder 中显示', () => flash('在 Finder 中显示 ' + cur.path)),
+        sep,
+        item('复制路径', () => flash('已复制路径')),
+        item('复制相对路径', () => flash('已复制相对路径')),
+      ];
+      const tail = [];
+      if (!cur.dir && ['M', 'A', 'U'].includes(cur.st)) tail.push(item('查看改动', () => flash('跳到本地改动：' + cur.name)));
+      if (!ignored(cur) && cur.st !== 'U' && cur.st !== 'A') tail.push(item('查看历史', () => flash('在所有提交里只看 ' + cur.path)));
+      if (!ignored(cur) && (cur.dir || cur.st === 'U')) {
+        tail.push(item('忽略：加入 .gitignore', () => flash('已将 ' + cur.path + ' 加入 .gitignore')));
+        tail.push(item('仅本机忽略：加入 .git/info/exclude', () => flash('已将 ' + cur.path + ' 加入 .git/info/exclude')));
+      }
+      if (tail.length) ctxItems = ctxItems.concat([sep], tail);
+    }
+
+    // 键盘：上下移动，右键展开或进到第一个子项，左键收起或回到上级，回车打开
+    const onKey = (e) => {
+      const at = flat.findIndex((r) => r.n.path === s.sel);
+      const curRow = flat[at];
+      const go = (i) => { if (flat[i]) set({ sel: flat[i].n.path }); };
+      if (e.key === 'ArrowDown') { e.preventDefault(); go(Math.min(at + 1, flat.length - 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); go(Math.max(at - 1, 0)); }
+      else if (e.key === 'ArrowRight' && curRow && curRow.n.dir) { e.preventDefault(); if (!isOpen(curRow.n)) toggleOpen(curRow.n); else go(at + 1); }
+      else if (e.key === 'ArrowLeft' && curRow) {
+        e.preventDefault();
+        if (curRow.n.dir && isOpen(curRow.n) && !q) toggleOpen(curRow.n);
+        else if (curRow.n.parent) set({ sel: curRow.n.parent });
+      } else if (e.key === 'Enter' && curRow) { e.preventDefault(); if (curRow.n.dir) { if (!q) toggleOpen(curRow.n); } else flash('用默认程序打开 ' + curRow.n.name); }
+    };
+
+    const changedFiles = all.filter((n) => !n.dir && ['M', 'A', 'U'].includes(n.st)).length;
+    const dark = s.theme === 'dark';
+    const navDef = [
+      ['本地改动', 'M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z', changedFiles, 'Main.dc.html', false],
+      ['所有提交', 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l4 2', 0, 'Main.dc.html', false],
+      ['文件', 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z', 0, 'Files.dc.html', true],
+      ['储藏', 'M21 8v13H3V8 M1 3h22v5H1z M10 12h4', 2, 'Main.dc.html', false],
+      ['统计和洞察', 'M18 20V10 M12 20V4 M6 20v-6', 0, 'Main.dc.html', false],
+    ];
+    return {
+      themeClass: 's-' + s.scheme + (dark ? ' t-dark' : ' t-light'),
+      nav: navDef.map(([label, icon, badge, href, on]) => ({ label, icon, href, badge: badge || '', badgeDisplay: badge ? 'block' : 'none',
+        bg: on ? 'var(--raised)' : 'transparent', stroke: on ? 'var(--accent-ink)' : 'var(--muted)', weight: on ? 600 : 400 })),
+      rows,
+      emptyDisplay: rows.length ? 'none' : 'block',
+      emptyText: q ? '没有名称包含「' + s.filter.trim() + '」的文件' + (s.showIgnored ? '' : '；被忽略的文件已隐藏') : '这个仓库是空的',
+      filter: s.filter, onFilter: (e) => set({ filter: e.target.value }), clearFilter: () => set({ filter: '' }), clearDisplay: s.filter ? 'block' : 'none',
+      ignPressed: String(s.showIgnored), toggleIgnored: () => set({ showIgnored: !s.showIgnored }),
+      ignBorder: s.showIgnored ? 'var(--accent)' : 'var(--faint)', ignBg: s.showIgnored ? 'var(--accent)' : 'transparent', ignCheck: s.showIgnored ? 'block' : 'none',
+      summary: q ? rows.filter((r) => r.hit).length + ' 个匹配' : changedFiles + ' 个文件有改动',
+      collapseAll: () => set({ open: {} }), refresh: () => flash('已刷新'),
+      onKey, selPath: s.sel,
+      ctxDisplay: s.ctx ? 'block' : 'none', ctxX: (s.ctx ? s.ctx.x : 0) + 'px', ctxY: (s.ctx ? s.ctx.y : 0) + 'px', ctxItems,
+      closeCtx: (e) => { e.preventDefault(); set({ ctx: null }); },
+      toast: s.toast, toastDisplay: s.toast ? 'flex' : 'none',
+    };
+  }
+}
+</script>
+</body>
+</html>

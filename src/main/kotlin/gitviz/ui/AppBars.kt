@@ -138,13 +138,13 @@ internal fun Toolbar(
                 ToolButton(t("Push", "推送"), Icons.Push, enabled = canSync, onClick = onPush, onMenu = onPushMenu, count = ahead ?: 0)
                 ToolButton(t("Stash", "储藏"), Icons.Stash, enabled = canSync && canStash, onClick = onStash)
             }
-            SearchField(query, onQuery, searchFocus, onSearchEscape)
+            SearchField(query, onQuery, searchFocus, onEscape = onSearchEscape)
         }
     }
 }
 
 @Composable
-internal fun SearchField(value: String, onChange: (String) -> Unit, focus: FocusRequester? = null, onEscape: () -> Unit = {}) {
+internal fun SearchField(value: String, onChange: (String) -> Unit, focus: FocusRequester? = null, placeholder: String? = null, width: Dp = 240.dp, onEscape: () -> Unit = {}) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(5.dp)
@@ -156,7 +156,7 @@ internal fun SearchField(value: String, onChange: (String) -> Unit, focus: Focus
         interactionSource = interaction,
         decorationBox = { field ->
             Row(
-                Modifier.width(240.dp).height(28.dp).background(Palette.Rail, shape)
+                Modifier.width(width).height(28.dp).background(Palette.Rail, shape)
                     .border(1.dp, if (focused) Palette.Accent else Palette.Line, shape)
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -164,7 +164,7 @@ internal fun SearchField(value: String, onChange: (String) -> Unit, focus: Focus
             ) {
                 Icon(Icons.Search, Palette.Faint, size = 14.dp)
                 Box(Modifier.weight(1f)) {
-                    if (value.isEmpty()) Text(t("Search commits, branches, tags", "搜索提交、分支、标签"), fontSize = TypeScale.Body, color = Palette.Faint, maxLines = 1)
+                    if (value.isEmpty()) Text(placeholder ?: t("Search commits, branches, tags", "搜索提交、分支、标签"), fontSize = TypeScale.Body, color = Palette.Faint, maxLines = 1)
                     field()
                 }
             }
