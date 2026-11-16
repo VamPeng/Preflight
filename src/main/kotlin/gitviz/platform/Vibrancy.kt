@@ -109,6 +109,9 @@ object Vibrancy {
 
     private fun insertEffectView(window: ComposeWindow): Boolean {
         val nsWindow = findNSWindow(window.title) ?: return false
+        // 标题栏已由 Compose WindowDraggableArea 移动窗口；AppKit 再处理同一拖曳会争抢位置。
+        // 只关闭系统鼠标拖曳，程序设置位置和窗口缩放仍可用。必须在 AppKit 主线程设置。
+        nsWindow.call("setMovable:", 0.toByte())
         val content = nsWindow.send("contentView") ?: return false
         val frame = content.send("superview") ?: return false
         val bounds = NSRect(width = window.width.toDouble(), height = window.height.toDouble())
