@@ -42,6 +42,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.io.File
 
 /** 引用树下方的附加分组，比如工作树、子模块。没有内容的分组不要传进来。 */
 data class SidebarGroup(val key: String, val title: String, val entries: List<SidebarEntry>)
@@ -59,13 +60,13 @@ data class SidebarEntry(
 )
 
 private val Sections get() = listOf(t("Branches", "本地分支") to RefKind.BRANCH, t("Remotes", "远程") to RefKind.REMOTE, t("Tags", "标签") to RefKind.TAG)
+private val RefLabel.identity get() = kind to name
 
 /** 左侧引用树。点引用跳到它指向的提交，提交还没加载时会先加载到它。 */
 @Composable
 fun RefSidebar(
     refs: List<RefTarget>,
     filter: String,
-    selectedId: String?,
     onSelect: (RefTarget) -> Unit,
     modifier: Modifier,
     onBranchOpen: (RefTarget) -> Unit = {},
@@ -78,6 +79,7 @@ fun RefSidebar(
     /** 本地分支名 → 领先／落后和最后提交时间，行右边显示；没读到的分支不显示。 */
     sync: Map<String, GitRepo.BranchSync> = emptyMap(),
     nowSeconds: Long = 0,
+    repositoryDirectory: File? = null,
 ) {
     var collapsed by remember { mutableStateOf(setOf("${RefKind.TAG}:")) } // 标签通常很多，默认收起
     val filtering = filter.isNotBlank()
@@ -95,7 +97,7 @@ fun RefSidebar(
 
     val focus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    var keyboardRef by remember { mutableStateOf<RefLabel?>(null) }
+    var focusedRef by remember(repositoryDirectory) { mutableStateOf<Pair<RefKind, String>?>(null) }
     val navigation = buildList<Pair<RefTarget, Int>> {
         var position = 0
         Sections.forEachIndexed { i, (_, kind) ->
@@ -108,9 +110,15 @@ fun RefSidebar(
     }
     Box(modifier.focusRequester(focus).onKeyEvent { e ->
         if (e.type != KeyEventType.KeyDown || e.isMetaPressed || e.isCtrlPressed || e.isAltPressed || navigation.isEmpty()) false else {
-            val current = navigation.indexOfFirst { it.first.label == keyboardRef }.takeIf { it >= 0 } ?: navigation.indexOfFirst { it.first.commitId == selectedId }
+            val current = navigation.indexOfFirst { it.first.label.identity == focusedRef }
             val index = when (e.key) { Key.J, Key.DirectionDown -> current + 1; Key.K, Key.DirectionUp -> current - 1; Key.Enter -> current; else -> Int.MIN_VALUE }
-            if (index == Int.MIN_VALUE) false else { val next = navigation[index.coerceIn(navigation.indices)]; keyboardRef = next.first.label; onSelect(next.first); scope.launch { listState.animateScrollToItem(next.second) }; true }
+            if (index == Int.MIN_VALUE) false else {
+                val (ref, position) = navigation[index.coerceIn(navigation.indices)]
+                focusedRef = ref.label.identity
+                onSelect(ref)
+                scope.launch { listState.animateScrollToItem(position) }
+                true
+            }
         }
     }.focusable()) {
         LazyColumn(Modifier.fillMaxSize().padding(end = 10.dp), state = listState) {
@@ -131,9 +139,9 @@ fun RefSidebar(
                             FolderRow(row, !filtering && key in collapsed, onClick = { toggle(key) })
                         } else {
                             RefLeafRow(
-                                    row, ref, ref.commitId == selectedId, branchColors.index(ref.label),
+                                    row, ref, ref.label.identity == focusedRef, branchColors.index(ref.label),
                                     detail = if (ref.label.kind == RefKind.BRANCH) sync[ref.label.name]?.let { branchDetail(it, nowSeconds) } else null,
-                                    onHover = onHover, onClick = { keyboardRef = ref.label; focus.requestFocus(); onSelect(ref) },
+                                    onHover = onHover, onClick = { focusedRef = ref.label.identity; focus.requestFocus(); onSelect(ref) },
                                     onOpen = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchOpen(ref) },
                                     onMenu = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchMenu(ref) },
                                 )

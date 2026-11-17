@@ -37,7 +37,7 @@ class ScreenshotTest {
                     Row(Modifier.fillMaxSize()) {
                         Column(Modifier.width(248.dp).fillMaxHeight().background(Palette.Rail)) {
                             Spacer(Modifier.height(TitleBarHeight))
-                            RefSidebar(result.refs, "", selected?.id, {}, Modifier.fillMaxWidth().weight(1f), branchColors = state.branchColors)
+                            RefSidebar(result.refs, "", {}, Modifier.fillMaxWidth().weight(1f), branchColors = state.branchColors)
                             HorizontalDivider()
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                             }
@@ -49,7 +49,7 @@ class ScreenshotTest {
                             CommitHistoryLayout(selected != null, Modifier.fillMaxWidth().weight(1f),
                                 list = { historyInsets ->
                                     CommitList(state, result.commits.indices.toList(), selected, rememberLazyListState(), { selected = it },
-                                        Modifier.fillMaxSize(), historyInsets = historyInsets)
+                                        Modifier.fillMaxSize(), focusedCommitId = selected?.id, onFocusCommit = {}, historyInsets = historyInsets)
                                 },
                                 detail = { CommitDetail(repo, selected, {}, it) },
                             )

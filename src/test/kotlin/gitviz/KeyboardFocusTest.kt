@@ -13,7 +13,9 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.pointer.*
 import kotlinx.coroutines.launch
 import kotlin.test.*
 
@@ -37,7 +39,8 @@ class KeyboardFocusTest {
                             e.type == KeyEventType.KeyDown && (shortcutCommand(e.key, e.isMetaPressed || e.isCtrlPressed, e.isShiftPressed, text.editing)?.let(registry::execute) ?: false)
                         }.focusable()) {
                             SearchField(query, { query = it }, search) { query = ""; scope.launch { withFrameNanos { }; history.requestFocus() } }
-                            CommitList(state, loaded.commits.indices.toList(), selected, rememberLazyListState(), { selected = it }, Modifier.weight(1f), focusRequester = history)
+                            CommitList(state, loaded.commits.indices.toList(), selected, rememberLazyListState(), { selected = it }, Modifier.weight(1f),
+                                focusedCommitId = selected?.id, onFocusCommit = {}, focusRequester = history)
                         }
                     }
                     if (open) CommandPalette(registry) { open = false }
@@ -59,6 +62,44 @@ class KeyboardFocusTest {
                 key(Key.Escape); assertEquals("", query)
                 key(Key.J); assertEquals(loaded.commits[2].id, selected!!.id)
             } finally { scene.close() }
+        }
+    }
+
+    @Test fun `clicking a commit focuses its row until enter selects it`() = RepositoryFixture().use { r ->
+        r.commit(); r.commit(content = "second\n")
+        GitRepo.open(r.root).use { repo ->
+            val loaded = repo.loadCommits()
+            val (head, previous) = loaded.commits
+            val state = RepoState.create(repo, loaded, head.id)
+            var selected by mutableStateOf(head)
+            var focusedId by mutableStateOf(head.id)
+            val scene = ImageComposeScene(900, 600) {
+                GitVizTheme {
+                    CommitList(
+                        state, loaded.commits.indices.toList(), selected, rememberLazyListState(),
+                        onSelect = { selected = it; focusedId = it.id },
+                        modifier = Modifier.fillMaxSize(),
+                        focusedCommitId = focusedId,
+                        onFocusCommit = { focusedId = it },
+                    )
+                }
+            }
+            try {
+                scene.render(0)
+                val position = Offset(350f, 27f + Settings.rowHeight * 1.5f)
+                scene.sendPointerEvent(PointerEventType.Press, position, type = PointerType.Mouse,
+                    buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                scene.sendPointerEvent(PointerEventType.Release, position, type = PointerType.Mouse,
+                    buttons = PointerButtons(), button = PointerButton.Primary)
+                scene.render(16_000_000)
+                assertEquals(previous.id, focusedId)
+                assertEquals(head, selected)
+
+                scene.sendKeyEvent(KeyEvent(Key.Enter, KeyEventType.KeyDown))
+                assertEquals(previous, selected)
+            } finally {
+                scene.close()
+            }
         }
     }
 }

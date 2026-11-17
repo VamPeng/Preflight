@@ -39,8 +39,9 @@ class BranchDragTest {
                 GitVizTheme {
                     CompositionLocalProvider(LocalBranchDrag provides drag) {
                         Row(Modifier.fillMaxSize()) {
-                            RefSidebar(loaded.refs, "", null, { selections++ }, Modifier.width(240.dp).fillMaxHeight())
-                            CommitList(state, loaded.commits.indices.toList(), null, rememberLazyListState(), { selections++ }, Modifier.weight(1f))
+                            RefSidebar(loaded.refs, "", { selections++ }, Modifier.width(240.dp).fillMaxHeight())
+                            CommitList(state, loaded.commits.indices.toList(), null, rememberLazyListState(), { selections++ }, Modifier.weight(1f),
+                                focusedCommitId = null, onFocusCommit = { selections++ })
                         }
                     }
                 }
