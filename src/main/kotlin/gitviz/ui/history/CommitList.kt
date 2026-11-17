@@ -107,8 +107,6 @@ internal fun CommitList(
     listState: LazyListState,
     onSelect: (CommitInfo) -> Unit,
     modifier: Modifier,
-    focusedCommitId: String?,
-    onFocusCommit: (String) -> Unit,
     onMenu: (CommitInfo) -> Unit = {},
     onNearEnd: () -> Unit = {},
     footer: String? = null,
@@ -141,7 +139,7 @@ internal fun CommitList(
     val scope = rememberCoroutineScope()
     BoxWithConstraints(modifier.focusRequester(focus).onKeyEvent { event ->
         if (event.type != KeyEventType.KeyDown || event.isMetaPressed || event.isCtrlPressed || event.isAltPressed || shown.isEmpty()) false else {
-            val position = shown.indexOfFirst { state.result.commits[it].id == focusedCommitId }
+            val position = shown.indexOfFirst { state.result.commits[it].id == selected?.id }
             val next = when (event.key) {
                 Key.J, Key.DirectionDown -> (position + 1).coerceIn(shown.indices)
                 Key.K, Key.DirectionUp -> (position - 1).coerceIn(shown.indices)
@@ -169,8 +167,8 @@ internal fun CommitList(
                     items(shown, key = { state.result.commits[it].id }) { index ->
                         val c = state.result.commits[index]
                         CommitRow(
-                            c, state.rows[index], lanesShown, c.id == state.headId, c.id == focusedCommitId, now,
-                            onClick = { focus.requestFocus(); onFocusCommit(c.id) },
+                            c, state.rows[index], lanesShown, c.id == state.headId, c.id == selected?.id, now,
+                            onClick = { focus.requestFocus(); onSelect(c) },
                             onMenu = onMenu, branchColors = state.branchColors, highlight = highlight, onHoverLine = { hoverLine = it },
                         )
                     }
@@ -218,7 +216,7 @@ private fun CommitRow(
     row: GraphRow,
     lanesShown: Int,
     isHead: Boolean,
-    isFocused: Boolean,
+    isSelected: Boolean,
     nowSeconds: Long,
     onClick: () -> Unit,
     onMenu: (CommitInfo) -> Unit,
@@ -230,7 +228,7 @@ private fun CommitRow(
         Modifier.fillMaxWidth().height(Settings.rowHeight.dp)
             .onRightClick { onMenu(c) }
             .hoverRow()
-            .rowHighlight(isFocused)
+            .rowHighlight(isSelected)
             .clickable(onClick = onClick)
             .padding(start = 12.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -49,7 +49,7 @@ class ScreenshotTest {
                             CommitHistoryLayout(selected != null, Modifier.fillMaxWidth().weight(1f),
                                 list = { historyInsets ->
                                     CommitList(state, result.commits.indices.toList(), selected, rememberLazyListState(), { selected = it },
-                                        Modifier.fillMaxSize(), focusedCommitId = selected?.id, onFocusCommit = {}, historyInsets = historyInsets)
+                                        Modifier.fillMaxSize(), historyInsets = historyInsets)
                                 },
                                 detail = { CommitDetail(repo, selected, {}, it) },
                             )

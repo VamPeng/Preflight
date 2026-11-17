@@ -167,11 +167,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     // 一启动就要打开上次的仓库，先当成正在加载，第一帧不要露出欢迎页的按钮
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf<CommitInfo?>(null) }
-    var focusedCommitId by remember { mutableStateOf<String?>(null) }
-    fun selectCommit(commit: CommitInfo?) {
-        selected = commit
-        focusedCommitId = commit?.id
-    }
     var query by remember { mutableStateOf("") }
     var net by remember { mutableStateOf<NetStatus?>(null) }
     var operationBusy by remember { mutableStateOf(false) }
@@ -289,9 +284,6 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 val sameRepository = before?.repo?.repository?.directory == newState.repo.repository.directory
                 selected = if (sameRepository) commits.firstOrNull { it.id == selected?.id } ?: defaultSelection(commits, newState.headId)
                     else defaultSelection(commits, newState.headId)
-                if (!sameRepository || focusedCommitId?.let(newState.indexById::containsKey) != true) {
-                    focusedCommitId = selected?.id
-                }
                 if (!sameRepository) {
                     working = emptyList()
                     stashes = emptyList()
@@ -650,7 +642,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                     state = next
                     historyError = null
                     val commits = next.result.commits
-                    selectCommit(commits.firstOrNull { it.id == selected?.id } ?: defaultSelection(commits, next.headId))
+                    selected = commits.firstOrNull { it.id == selected?.id } ?: defaultSelection(commits, next.headId)
                     scrollTarget = selected?.id
                 }
             } catch (e: CancellationException) {
@@ -667,7 +659,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     fun jumpTo(id: String, select: Boolean = true, direct: Boolean = false) {
         val current = s ?: return
         current.indexById[id]?.let { index ->
-            if (select) { selectCommit(current.result.commits[index]); scrollTarget = id }
+            if (select) { selected = current.result.commits[index]; scrollTarget = id }
             return
         }
         seeking?.job?.cancel()
@@ -678,13 +670,13 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 if (select && (direct || current.history?.path != null || outsideBranches)) {
                     // A reflog object need not be reachable by the currently filtered pager.
                     val commit = withContext(Dispatchers.IO) { current.repo.commit(id) }
-                    if (state?.repo === current.repo) { selectCommit(commit); scrollTarget = id }
+                    if (state?.repo === current.repo) { selected = commit; scrollTarget = id }
                 } else {
                     val found = loadMore(target = id)
                     val now = state
                     if (select && now?.repo === current.repo) {
                         val commit = if (found) now.result.commits[now.indexById.getValue(id)] else withContext(Dispatchers.IO) { now.repo.commit(id) }
-                        if (state?.repo === now.repo) { selectCommit(commit); scrollTarget = id }
+                        if (state?.repo === now.repo) { selected = commit; scrollTarget = id }
                     }
                 }
             } catch (e: CancellationException) { throw e }
@@ -951,17 +943,15 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         list = { historyInsets ->
                             CommitList(
-                                s, shown, selected, commitListState, onSelect = ::selectCommit,
+                                s, shown, selected, commitListState, onSelect = { selected = it },
                                 Modifier.fillMaxSize(),
-                                focusedCommitId = focusedCommitId,
-                                onFocusCommit = { focusedCommitId = it },
                                 historyInsets = historyInsets,
                                 focusRequester = historyFocus,
                                 uncommitted = if (query.isBlank() && pathFilter == null) working.size else 0,
                                 onUncommitted = { view = MainView.CHANGES },
                                 sidebarHighlight = hoveredRef?.let { s.indexById[it.commitId] }?.let { s.rows[it].nodeTrack.line },
                                 onMenu = { c ->
-                                    selectCommit(c)
+                                    selected = c
                                     // 储藏不能 checkout、cherry-pick，右键直接去储藏页应用或删除
                                     if (c.isStash) {
                                         stashSelected = c.id

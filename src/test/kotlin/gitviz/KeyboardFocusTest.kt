@@ -40,7 +40,7 @@ class KeyboardFocusTest {
                         }.focusable()) {
                             SearchField(query, { query = it }, search) { query = ""; scope.launch { withFrameNanos { }; history.requestFocus() } }
                             CommitList(state, loaded.commits.indices.toList(), selected, rememberLazyListState(), { selected = it }, Modifier.weight(1f),
-                                focusedCommitId = selected?.id, onFocusCommit = {}, focusRequester = history)
+                                focusRequester = history)
                         }
                     }
                     if (open) CommandPalette(registry) { open = false }
@@ -65,22 +65,19 @@ class KeyboardFocusTest {
         }
     }
 
-    @Test fun `clicking a commit focuses its row until enter selects it`() = RepositoryFixture().use { r ->
+    @Test fun `click and keyboard activation both switch the selected commit`() = RepositoryFixture().use { r ->
         r.commit(); r.commit(content = "second\n")
         GitRepo.open(r.root).use { repo ->
             val loaded = repo.loadCommits()
             val (head, previous) = loaded.commits
             val state = RepoState.create(repo, loaded, head.id)
             var selected by mutableStateOf(head)
-            var focusedId by mutableStateOf(head.id)
             val scene = ImageComposeScene(900, 600) {
                 GitVizTheme {
                     CommitList(
                         state, loaded.commits.indices.toList(), selected, rememberLazyListState(),
-                        onSelect = { selected = it; focusedId = it.id },
+                        onSelect = { selected = it },
                         modifier = Modifier.fillMaxSize(),
-                        focusedCommitId = focusedId,
-                        onFocusCommit = { focusedId = it },
                     )
                 }
             }
@@ -92,11 +89,14 @@ class KeyboardFocusTest {
                 scene.sendPointerEvent(PointerEventType.Release, position, type = PointerType.Mouse,
                     buttons = PointerButtons(), button = PointerButton.Primary)
                 scene.render(16_000_000)
-                assertEquals(previous.id, focusedId)
-                assertEquals(head, selected)
-
-                scene.sendKeyEvent(KeyEvent(Key.Enter, KeyEventType.KeyDown))
                 assertEquals(previous, selected)
+
+                scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyDown))
+                scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyUp))
+                scene.render(32_000_000)
+                scene.sendKeyEvent(KeyEvent(Key.Enter, KeyEventType.KeyDown))
+                scene.sendKeyEvent(KeyEvent(Key.Enter, KeyEventType.KeyUp))
+                assertEquals(head, selected)
             } finally {
                 scene.close()
             }
