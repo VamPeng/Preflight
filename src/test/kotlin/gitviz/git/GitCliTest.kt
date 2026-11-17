@@ -8,6 +8,8 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** 用本地裸仓库当 origin，推送不会碰到任何真实的远程。 */
@@ -116,9 +118,66 @@ class GitCliTest {
         git(work, "fetch", "-q"); git(work, "reset", "-q", "--hard", "HEAD~1"); commit(work, "b", "mine\n")
         git(work, "checkout", "-q", "main")
         assertEquals(GitFailure.REJECTED, cli.pushBranch("feature").failure)
-        assertTrue(cli.pushBranch("feature", force = true).ok)
+        assertTrue(cli.pushBranch(assertNotNull(cli.prepareBranchForcePush("feature"))).ok)
         assertEquals(git(work, "rev-parse", "feature"), git(origin, "rev-parse", "feature"))
         assertEquals("main", git(work, "rev-parse", "--abbrev-ref", "HEAD"))
+    }
+
+    @Test
+    fun `pushing the current branch by name ignores matching branches and follow-tags`() {
+        prepare()
+        git(work, "branch", "side")
+        git(work, "push", "-q", "-u", "origin", "side")
+        git(work, "switch", "-q", "side")
+        commit(work, "side.txt", "local side\n")
+        git(work, "switch", "-q", "main")
+        commit(work, "a", "local main\n")
+        git(work, "tag", "-a", "local-tag", "-m", "local tag")
+        git(work, "config", "push.default", "matching")
+        git(work, "config", "push.followTags", "true")
+
+        val cli = GitCli(work)
+        val sideBefore = git(origin, "rev-parse", "side")
+        assertTrue(cli.pushBranch("main").ok)
+        assertEquals(git(work, "rev-parse", "main"), git(origin, "rev-parse", "main"))
+        assertEquals(sideBefore, git(origin, "rev-parse", "side"))
+        assertEquals("", git(origin, "tag", "--list"))
+
+        cloneTo(other)
+        commit(other, "a", "remote main\n")
+        git(other, "push", "-q", "origin", "main")
+        git(work, "fetch", "-q", "origin")
+        commit(work, "a", "rewritten main\n")
+        val plan = assertNotNull(cli.prepareBranchForcePush("main"))
+        assertTrue(cli.pushBranch(plan).ok)
+        assertEquals(git(work, "rev-parse", "main"), git(origin, "rev-parse", "main"))
+        assertEquals(sideBefore, git(origin, "rev-parse", "side"))
+        assertEquals("", git(origin, "tag", "--list"))
+    }
+
+    @Test
+    fun `force push keeps the confirmed lease after fetching a newer upstream`() {
+        prepare()
+        git(work, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/mapped-main")
+        val cli = GitCli(work)
+        assertNull(cli.prepareBranchForcePush("main"))
+        git(work, "fetch", "-q", "origin")
+        val plan = assertNotNull(cli.prepareBranchForcePush("main"))
+        assertEquals("origin/main", plan.destination)
+        assertEquals(git(work, "rev-parse", "refs/remotes/origin/mapped-main"), plan.expectedRemote)
+
+        cloneTo(other)
+        commit(other, "a", "remote main\n")
+        git(other, "push", "-q", "origin", "main")
+        git(work, "fetch", "-q", "origin")
+        commit(work, "a", "local main\n")
+        val remoteTip = git(other, "rev-parse", "main")
+
+        assertEquals(GitFailure.REJECTED, cli.pushBranch(plan).failure)
+        assertEquals(remoteTip, git(origin, "rev-parse", "main"))
+        val refreshedPlan = assertNotNull(cli.prepareBranchForcePush("main"))
+        assertEquals(remoteTip, refreshedPlan.expectedRemote)
+        assertTrue(cli.pushBranch(refreshedPlan).ok)
     }
 
     @Test

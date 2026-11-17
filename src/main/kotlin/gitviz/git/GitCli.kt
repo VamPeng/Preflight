@@ -29,6 +29,10 @@ data class GitResult(val failure: GitFailure?, val output: String, val lessons: 
     val ok: Boolean get() = failure == null
 }
 
+internal data class BranchForcePush(val branch: String, val remote: String, val remoteRef: String, val expectedRemote: String) {
+    val destination: String get() = "$remote/${remoteRef.removePrefix("refs/heads/")}"
+}
+
 /** 把进程启动、磁盘等异常转换为可见的失败结果；协程取消仍交给调用者处理。 */
 internal fun attemptGitOperation(op: () -> GitResult): GitResult = try {
     op()
@@ -149,24 +153,38 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
     internal fun atPath(path: File): GitCli = GitCli(path, isolated)
 
     /**
-     * 推送当前分支；没有上游时设到 origin，以后直接 git push 也能用。
-     * force 用 --force-with-lease：只有远程分支还是上次获取时的样子才覆盖，别人新推的提交不会被冲掉。
-     */
-    /**
      * 推送指定的本地分支，不切换当前分支：有上游就推到上游（可以是别的远程、别的名字），没有就推到 origin 并设为上游。
      * 只推这一个分支的引用，不依赖 push.default。
      */
-    fun pushBranch(branch: String, force: Boolean = false): GitResult {
+    fun pushBranch(branch: String): GitResult {
         if (capture("rev-parse", "-q", "--verify", "refs/heads/$branch") == null)
             return GitResult(GitFailure.OTHER, t("Branch $branch doesn't exist", "分支 $branch 不存在"))
-        val flags = if (force) arrayOf("--force-with-lease") else emptyArray()
         val remote = config("branch.$branch.remote")?.takeIf { it.isNotBlank() && it != "." }
         val merge = config("branch.$branch.merge")?.takeIf { it.startsWith("refs/heads/") }
-        if (remote != null && merge != null) return network("push", *flags, remote, "refs/heads/$branch:$merge")
+        if (remote != null && merge != null) return network("push", "--no-follow-tags", "--", remote, "refs/heads/$branch:$merge")
         if ("origin" !in read("remote").lines()) return GitResult(GitFailure.OTHER, t("This repository has no remote named origin to push to", "这个仓库没有名为 origin 的远程，无法推送"))
-        return network("push", *flags, "-u", "origin", "refs/heads/$branch:refs/heads/$branch")
+        return network("push", "--no-follow-tags", "-u", "--", "origin", "refs/heads/$branch:refs/heads/$branch")
     }
 
+    /** 在展示确认框前固定目标与预期远端提交，之后的 fetch 不会改变这次强推的 lease。 */
+    internal fun prepareBranchForcePush(branch: String): BranchForcePush? {
+        val source = "refs/heads/$branch"
+        val upstream = capture("for-each-ref", "--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)", "--", source)
+            ?.lineSequence()?.firstOrNull { it.startsWith("$source\u0000") } ?: return null
+        val (_, remote, remoteRef, trackingRef) = upstream.split('\u0000', limit = 4)
+        if (remote.isEmpty() || remote == "." || !remoteRef.startsWith("refs/heads/") || trackingRef.isEmpty()) return null
+        val expectedRemote = capture("rev-parse", "--verify", "--end-of-options", "$trackingRef^{commit}") ?: return null
+        return BranchForcePush(branch, remote, remoteRef, expectedRemote)
+    }
+
+    internal fun pushBranch(plan: BranchForcePush): GitResult =
+        network("push", "--no-follow-tags", "--force-with-lease=${plan.remoteRef}:${plan.expectedRemote}",
+            "--", plan.remote, "refs/heads/${plan.branch}:${plan.remoteRef}")
+
+    /**
+     * 推送当前分支；没有上游时设到 origin，以后直接 git push 也能用。
+     * force 用 --force-with-lease：只有远程分支还是上次获取时的样子才覆盖，别人新推的提交不会被冲掉。
+     */
     fun push(force: Boolean = false): GitResult {
         val branch = capture("symbolic-ref", "--short", "-q", "HEAD")
             ?: return GitResult(GitFailure.OTHER, t("Not on any branch, so there's nothing to push", "现在不在任何分支上，无法推送"))

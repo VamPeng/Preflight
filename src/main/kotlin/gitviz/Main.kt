@@ -518,20 +518,42 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         }
     }
 
-    /** 右键分支推送：不切换分支。推当前分支时和工具栏按钮一样；推别的分支失败时，「先拉取」「重试」这些按钮针对的是当前分支，不能给。 */
-    fun runBranchPush(branch: String, force: Boolean, confirmed: Boolean = false) {
-        val here = s?.result?.refs?.firstOrNull { it.label.kind == RefKind.BRANCH && it.label.isCurrent }?.label?.name
-        if (branch == here) { runNet(if (force) NetOp.FORCE_PUSH else NetOp.PUSH, confirmed); return }
-        if (force && !confirmed) {
-            dialog = DialogSpec(t("Force push $branch", "强制推送 $branch"),
-                t("Replace the remote branch with your local $branch. Commits that exist only on the remote branch will be removed from it. Git refuses if the remote changed since your last fetch. Your current branch is not changed.", "用本地的 $branch 覆盖远程分支，只存在于远程分支上的提交会从它上面消失。如果远程在你上次获取之后又变了，Git 会拒绝。当前所在的分支不受影响。"),
-                t("Force push", "强制推送"), danger = true) { _, _ -> runBranchPush(branch, true, confirmed = true) }
+    fun runBranchPush(branch: String, force: Boolean) {
+        val git = cli ?: return
+        if (operationBusy || loading) return
+
+        fun execute(plan: BranchForcePush?) {
+            if (state?.repo?.workTree != git.workTree) return
+            val op = if (plan != null) NetOp.FORCE_PUSH else NetOp.PUSH
+            val target = plan?.let { "$branch → ${it.destination}" } ?: branch
+            runOp(NetStatus(op.running, target, NetState.RUNNING, cancellable = true), { result ->
+                val status = describe(op, result)
+                val detail = if (plan != null && result.failure == GitFailure.REJECTED)
+                    t("Git refused to update ${plan.destination}. Fetch and review that branch before trying again.", "Git 拒绝更新 ${plan.destination}。请先获取并查看该分支，再决定是否重试。")
+                else status.detail
+                // 工具栏的后续操作会按当前分支重新选目标。
+                status.copy(detail = detail, next = null, nextLabel = "", alternative = null, alternativeLabel = "")
+            }) { if (plan != null) pushBranch(plan) else pushBranch(branch) }
+        }
+
+        if (!force) {
+            execute(null)
             return
         }
-        val op = if (force) NetOp.FORCE_PUSH else NetOp.PUSH
-        runOp(NetStatus(op.running, branch, NetState.RUNNING, cancellable = true), {
-            describe(op, it).let { status -> if (status.state == NetState.FAILED || status.state == NetState.WARNING) status.copy(next = null, nextLabel = "", alternative = null, alternativeLabel = "") else status }
-        }) { pushBranch(branch, force) }
+        scope.launch {
+            val plan = withContext(Dispatchers.IO) { runCatching { git.prepareBranchForcePush(branch) }.getOrNull() }
+            if (state?.repo?.workTree != git.workTree || operationBusy || loading || dialog != null) return@launch
+            if (plan == null) {
+                net = NetStatus(t("Couldn't prepare force push", "无法准备强制推送"),
+                    t("Fetch $branch's remote upstream to verify its current commit.", "请确认 $branch 已配置远程上游，并先获取该远程分支。"),
+                    NetState.FAILED)
+                return@launch
+            }
+            dialog = DialogSpec(t("Force push $branch → ${plan.destination}", "强制推送 $branch → ${plan.destination}"),
+                t("Replace ${plan.destination} with your local $branch. Commits unique to the remote branch will be removed from it. Git will refuse to overwrite a remote commit other than ${plan.expectedRemote.take(12)}.",
+                    "用本地 $branch 覆盖 ${plan.destination}，移除只存在于该远程分支的提交。远程提交与 ${plan.expectedRemote.take(12)} 不符时，Git 会拒绝覆盖。"),
+                t("Force push", "强制推送"), danger = true) { _, _ -> execute(plan) }
+        }
     }
 
     val actions = GitActions(
