@@ -12,9 +12,6 @@ import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -41,8 +38,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -58,7 +53,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import java.awt.Cursor
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -175,7 +169,6 @@ internal fun ChangesView(
         val maxList = maxOf(MinListWidth, minOf(MaxListWidth, maxWidth / 2))
         var dragged by remember { mutableStateOf(Settings.changesWidth.dp) }
         val listWidth = dragged.coerceIn(MinListWidth, maxList)
-        val density = LocalDensity.current
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.width(listWidth).fillMaxHeight()) {
                 Column(Modifier.fillMaxSize()) {
@@ -216,16 +209,9 @@ internal fun ChangesView(
                     })
                 }
                 // 拖右边缘调整宽度，松手后记住
-                Box(
-                    Modifier.align(Alignment.CenterEnd).width(6.dp).fillMaxHeight()
-                        .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)))
-                        .draggable(
-                            rememberDraggableState { delta -> dragged = (listWidth + with(density) { delta.toDp() }).coerceIn(MinListWidth, maxList) },
-                            Orientation.Horizontal,
-                            onDragStopped = { Settings.updateChangesWidth(dragged.value.roundToInt()) },
-                        )
-                        .semantics { contentDescription = t("Drag to resize the list", "拖动调整列表宽度") },
-                )
+                WidthDragHandle(t("Drag to resize the list", "拖动调整列表宽度"), Modifier.align(Alignment.CenterEnd),
+                    onDrag = { dragged = (listWidth + it).coerceIn(MinListWidth, maxList) },
+                    onDragStopped = { Settings.updateChangesWidth(dragged.value.roundToInt()) })
             }
             VerticalDivider()
             Column(Modifier.weight(1f).fillMaxHeight().background(Palette.Panel)) {

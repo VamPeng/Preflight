@@ -10,6 +10,9 @@ import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -50,6 +53,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.semantics.Role
@@ -57,6 +65,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/**
+ * 栏的右边缘拖动条：拖动时给出宽度变化，松手时通知保存。
+ * 放在栏内右侧（align CenterEnd），盖住最右 6dp，鼠标变成左右调整的光标。
+ */
+@Composable
+fun WidthDragHandle(description: String, modifier: Modifier = Modifier, onDrag: (Dp) -> Unit, onDragStopped: () -> Unit) {
+    val density = LocalDensity.current
+    Box(
+        modifier.width(6.dp).fillMaxHeight()
+            .pointerHoverIcon(PointerIcon(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.E_RESIZE_CURSOR)))
+            .draggable(
+                rememberDraggableState { delta -> onDrag(with(density) { delta.toDp() }) },
+                Orientation.Horizontal,
+                onDragStopped = { onDragStopped() },
+            )
+            .semantics { contentDescription = description },
+    )
+}
 
 /** 24×24 画布上的线条图标路径。 */
 object Icons {

@@ -89,6 +89,15 @@ internal object Settings {
         prefs.putBoolean("changesTree", value)
     }
 
+    /** 主窗口左侧边栏（工作区入口和分支列表）的宽度（dp）。显示时再按窗口大小收到允许的范围里。 */
+    var sidebarWidth by mutableStateOf(prefs.getInt("sidebarWidth", 248))
+        private set
+
+    fun updateSidebarWidth(value: Int) {
+        sidebarWidth = value
+        prefs.putInt("sidebarWidth", value)
+    }
+
     /** 改动页左栏的宽度（dp）。显示时再按窗口大小收到允许的范围里。 */
     var changesWidth by mutableStateOf(prefs.getInt("changesWidth", 340))
         private set

@@ -18,11 +18,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.DpSize
@@ -47,6 +49,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import kotlin.math.roundToInt
 
 fun main(args: Array<String>) {
     System.setProperty("apple.awt.application.name", AppIcon.name)
@@ -94,6 +97,10 @@ fun main(args: Array<String>) {
         }
     }
 }
+
+/** 左侧边栏可拖动的宽度范围；上限另受窗口宽度 40% 约束，给提交列表留地方。 */
+private val MinSidebarWidth = 200.dp
+private val MaxSidebarWidth = 440.dp
 
 /** 开发安装包显式标记 dev；Gradle 和 IDE 直接运行时没有 jpackage 版本号，也视为开发版。 */
 private object AppIcon {
@@ -752,8 +759,13 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         if (event.type != KeyEventType.KeyDown) false else shortcutCommand(event.key, if (isMac) event.isMetaPressed else event.isCtrlPressed, event.isShiftPressed, textFocus.editing)?.let { registry.execute(it) } ?: false
     }.focusable()) {
         if (s != null) {
-            // 侧边栏从窗口顶部铺下来，顶上一段留给红绿灯
-            Column(Modifier.width(248.dp).fillMaxHeight().background(Palette.Rail)) {
+            // 侧边栏从窗口顶部铺下来，顶上一段留给红绿灯；拖右边缘调整宽度，松手后记住
+            val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+            val maxSidebar = if (windowWidth <= 0.dp) MaxSidebarWidth else maxOf(MinSidebarWidth, minOf(MaxSidebarWidth, windowWidth * 0.4f))
+            var sidebarDragged by remember { mutableStateOf(Settings.sidebarWidth.dp) }
+            val sidebarWidth = sidebarDragged.coerceIn(MinSidebarWidth, maxSidebar)
+            Box(Modifier.width(sidebarWidth).fillMaxHeight()) {
+            Column(Modifier.fillMaxSize().background(Palette.Rail)) {
                 if (isMac) TitleBarArea { Spacer(Modifier.fillMaxWidth().height(TitleBarHeight)) }
                 Column(Modifier.padding(horizontal = 6.dp).padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     if (inConflict) {
@@ -835,6 +847,10 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     IconButton(Icons.Settings) { view = MainView.SETTINGS }
                 }
+            }
+            WidthDragHandle(t("Drag to resize the sidebar", "拖动调整侧边栏宽度"), Modifier.align(Alignment.CenterEnd),
+                onDrag = { sidebarDragged = (sidebarWidth + it).coerceIn(MinSidebarWidth, maxSidebar) },
+                onDragStopped = { Settings.updateSidebarWidth(sidebarDragged.value.roundToInt()) })
             }
             VerticalDivider()
         }
