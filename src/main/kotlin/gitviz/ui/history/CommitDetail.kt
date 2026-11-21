@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -323,8 +327,9 @@ internal fun CodeList(longestLine: Int, gutter: Dp, modifier: Modifier, listStat
     }
 }
 
+/** 行号。选中复制代码时不带上它。 */
 @Composable
-internal fun LineNumber(no: Int?) {
+internal fun LineNumber(no: Int?) = DisableSelection {
     Text(
         no?.toString().orEmpty(), fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp, color = Palette.Faint,
         softWrap = false, textAlign = androidx.compose.ui.text.style.TextAlign.End,
@@ -383,10 +388,14 @@ internal fun DiffBody(lines: List<DiffLine>, mode: DiffMode, modifier: Modifier,
     }
 }
 
+/**
+ * diff 的文字可以拖选复制：只复制代码，不带行号和 +/− 标记，每行之后补一个换行。
+ * 列表是懒加载的，选区只能覆盖当前排出来的行，滚出去的行会丢掉选区。
+ */
 @Composable
 internal fun UnifiedDiff(lines: List<DiffLine>, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
     val longest = remember(lines) { lines.maxOf { it.text.length } }
-    CodeList(longest, NumberColumn * 2 + 14.dp, modifier) {
+    SelectionContainer(modifier) { CodeList(longest, NumberColumn * 2 + 14.dp, Modifier.fillMaxSize()) {
         items(lines) { line ->
             val (fg, bg) = line.colors()
             Row(Modifier.fillMaxWidth().height(LineHeight).background(if (selection?.selected?.invoke(line) == true) Palette.Accent.copy(alpha = 0.25f) else bg)
@@ -394,33 +403,47 @@ internal fun UnifiedDiff(lines: List<DiffLine>, modifier: Modifier, selection: D
                 LineNumber(line.oldNo)
                 LineNumber(line.newNo)
                 val sign = when (line.kind) { DiffLineKind.ADDED -> "+"; DiffLineKind.REMOVED -> "−"; else -> "" }
-                CodeText(sign, fg, Modifier.width(14.dp))
+                DisableSelection { CodeText(sign, fg, Modifier.width(14.dp)) }
                 DiffCodeText(line.code, fg, syntax?.line(line, line.kind == DiffLineKind.REMOVED))
             }
         }
-    }
+    } }
 }
 
 @Composable
 internal fun SplitDiff(lines: List<DiffLine>, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
     val rows = remember(lines) { toSplitRows(lines) }
     val listState = rememberLazyListState()
-    Box(modifier) {
+    // 拖选期间只有按下的那一侧可选，复制出来不会左右交错；松开后两侧都恢复可选，下次从哪边按都行
+    var side by remember { mutableStateOf<Boolean?>(null) }
+    SelectionContainer(modifier) { Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 4.dp)) {
             items(rows) { row ->
                 Row(Modifier.fillMaxWidth().height(LineHeight)) {
-                    SplitCell(row.left, left = true, Modifier.weight(1f).fillMaxHeight(), selection, syntax)
-                    VerticalDivider()
-                    SplitCell(row.right, left = false, Modifier.weight(1f).fillMaxHeight(), selection, syntax)
+                    for (left in listOf(true, false)) {
+                        if (!left) VerticalDivider()
+                        SplitCell(if (left) row.left else row.right, left, Modifier.weight(1f).fillMaxHeight()
+                            .pointerInput(left) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        when (event.type) {
+                                            PointerEventType.Press -> side = left
+                                            PointerEventType.Release -> side = null
+                                        }
+                                    }
+                                }
+                            }, selection, syntax, selectable = side == null || side == left)
+                    }
                 }
             }
         }
         VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
-    }
+    } }
 }
 
 @Composable
-private fun SplitCell(line: DiffLine?, left: Boolean, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
+private fun SplitCell(line: DiffLine?, left: Boolean, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null, selectable: Boolean = true) {
     if (line == null) {
         Spacer(modifier)
         return
@@ -429,7 +452,8 @@ private fun SplitCell(line: DiffLine?, left: Boolean, modifier: Modifier, select
     Row(modifier.background(if (selection?.selected?.invoke(line) == true) Palette.Accent.copy(alpha = 0.25f) else bg)
         .clickable(enabled = selection != null && line.kind in setOf(DiffLineKind.HUNK, DiffLineKind.ADDED, DiffLineKind.REMOVED)) { selection?.toggle?.invoke(line) }) {
         LineNumber(if (left) line.oldNo else line.newNo)
-        DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds())
+        if (selectable) DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds())
+        else DisableSelection { DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds()) }
     }
 }
 
@@ -481,7 +505,9 @@ private fun HistoryContent(
 private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifier: Modifier = Modifier) {
     val text = code.removeSuffix("\r")
     val annotated = androidx.compose.ui.text.buildAnnotatedString {
-        append(text.ifEmpty { " " })
+        // 多行选中复制时，SelectionContainer 把各行直接拼起来，所以每行自带换行；只显示一行，换行看不见
+        append(text)
+        append('\n')
         if (syntax?.text == text) syntax.tokens.forEach { token ->
             val tokenColor = when (token.kind) {
                 SyntaxKind.KEYWORD -> Palette.Copied

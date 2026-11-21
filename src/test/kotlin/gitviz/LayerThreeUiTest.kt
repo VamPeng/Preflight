@@ -80,6 +80,9 @@ class LayerThreeUiTest {
     @Test fun `interactive rebase base input edits and loads the reviewed range`() = RepositoryFixture().use { r ->
         r.commit(); r.commit("b", "second\n"); r.commit("c", "third\n")
         var reviewed: OperationIntent? = null
+        // 下面的点击坐标按英文界面量的：中文说明只占一行，按钮会上移
+        val language = Settings.language
+        Settings.language = Language.EN
         val scene = ImageComposeScene(1112, 800) { GitVizTheme { InteractiveRebaseDialog(r.cli, "HEAD^", false, {}, { reviewed = it }) } }
         try {
             var frame = 0L
@@ -97,7 +100,7 @@ class LayerThreeUiTest {
             save(scene, "interactive-input")
             assertEquals(2, reviewed?.interactive?.commits?.size)
             assertEquals("third", r.git("log", "-1", "--format=%s"))
-        } finally { scene.close() }
+        } finally { scene.close(); Settings.language = language }
     }
     @Test fun `insights and expanded teaching feedback render in both themes`() {
         val teaching = Settings.teachingMode

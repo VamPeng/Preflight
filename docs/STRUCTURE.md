@@ -60,6 +60,7 @@ open "/Applications/GitViz Dev.app"
 | | `DiffLines.kt`、`DiffHighlight.kt` | 给 diff 逐行分类；完整源码分词和高亮缓存 |
 | | `RefTree.kt`、`FileTree.kt` | 把引用名按 `/` 拆成树；读工作区目录和每个文件的 git 状态 |
 | | `ChangeTree.kt` | 改动文件按文件夹分层、合并中间层、收起，以及勾选状态 |
+| | `Readme.kt`、`Markdown.kt` | 读取预览用的文本文件、找工作区的 README；轻量 Markdown 解析 |
 | `service/` | `ServiceHttp.kt` | 有超时、大小限制和取消的 HTTP 请求 |
 | | `Ai.kt` | 受限改动快照、模型协议 |
 | `platform/` | `Vibrancy.kt`、`WindowSize.kt` | macOS 毛玻璃窗口、窗口尺寸保存与恢复 |
@@ -72,11 +73,12 @@ open "/Applications/GitViz Dev.app"
 | | `Settings.kt` | 用户选项、界面语言、最近的仓库、设置页 |
 | `ui/history/` | `CommitList.kt`、`GraphCell.kt` | 提交列表、每一行的分支图 |
 | | `CommitHistoryLayout.kt`、`CommitHistoryScrollbar.kt` | 提交列表底层、可展开和拖动的底部详情浮层、滚动条 |
-| | `CommitDetail.kt` | 提交详情、diff、文件历史、Blame |
+| | `CommitDetail.kt` | 提交详情、diff（可选中复制）、文件历史、Blame |
 | | `Sidebar.kt`、`SidebarGroups.kt`、`BranchFilterBar.kt`、`BranchDrag.kt` | 左侧引用树面板、工作树和子模块分组、分支过滤、分支拖拽 |
 | `ui/changes/` | `ChangesView.kt`、`PartialStageView.kt` | 本地改动（勾选、批量操作、平铺／按文件夹）、提交说明、按行暂存 |
 | | `StashView.kt` | 储藏列表和内容 |
 | | `ConflictView.kt`、`ConflictEditor.kt` | 解决冲突的界面 |
+| `ui/preview/` | `PreviewArea.kt`、`TextDocumentView.kt` | 占满正文区域的预览区（标题栏和关闭按钮）；可选中复制的 Markdown／纯文本渲染。以后的文件预览也放这里 |
 | `ui/tools/` | `FilesView.kt`、`ReflogView.kt` | 文件页、引用日志 |
 | | `InsightsView.kt`、`InteractiveRebaseView.kt` | 洞察、交互式变基 |
 | | `ComparisonView.kt`、`BlameTraceView.kt`、`PullDialog.kt` | 分支比较、来源追溯、拉取选项 |

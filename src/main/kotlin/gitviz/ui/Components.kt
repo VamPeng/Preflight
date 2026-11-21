@@ -114,6 +114,7 @@ object Icons {
     const val List = "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01"
     const val ExpandAll = "M7 15l5 5 5-5 M7 9l5-5 5 5"
     const val CollapseAll = "M7 20l5-5 5 5 M7 4l5 5 5-5"
+    const val Close = "M18 6L6 18 M6 6l12 12"
 }
 
 @Composable

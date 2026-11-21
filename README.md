@@ -65,7 +65,8 @@
 
 - **Commit graph**: local branches, remote branches, tags, HEAD and stashes are all drawn on the graph; click a ref in the sidebar to jump to its commit
 - **Search and filter**: one search box covers commit messages, authors, hashes, branches and tags; show only selected branches, or only the history of one file
-- **Commit details**: in a bottom panel you can drag taller or expand to fill the window; unified or side-by-side diffs with line numbers and syntax highlighting
+- **README preview**: opening a repository shows its README across the main area first, with selectable, copyable text
+- **Commit details**: in a bottom panel you can drag taller or expand to fill the window; unified or side-by-side diffs with line numbers and syntax highlighting, and code you can select and copy
 - **Blame tracing**: see who changed each line in which commit, and keep following it back across renames and merges
 - **Branch comparison**: commits and file differences unique to each side of two branches
 - **Insights**: commit heatmap, top contributors and most frequently changed files

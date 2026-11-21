@@ -7,6 +7,7 @@ import gitviz.service.*
 import gitviz.ui.*
 import gitviz.ui.changes.*
 import gitviz.ui.history.*
+import gitviz.ui.preview.*
 import gitviz.ui.tools.*
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.background
@@ -127,7 +128,7 @@ private const val MIN_RELOAD_GAP_MS = 1500L
 /** 监听期间没有变化时，多久兜底读一次。 */
 private const val FALLBACK_RELOAD_MS = 30_000L
 
-private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, INSIGHTS, COMPARE, AI }
+private enum class MainView { HISTORY, CHANGES, FILES, STASH, CONFLICT, SETTINGS, REFLOG, INSIGHTS, COMPARE, AI, PREVIEW }
 
 /** 刚打开仓库时默认选中 HEAD；HEAD 不在已加载范围内就选第一个真正的提交，最后才是储藏。 */
 internal fun defaultSelection(commits: List<CommitInfo>, headId: String?): CommitInfo? =
@@ -173,6 +174,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     // 一启动就要打开上次的仓库，先当成正在加载，第一帧不要露出欢迎页的按钮
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf<CommitInfo?>(null) }
+    // 正文区域的预览页要显示的内容；刚打开仓库时是 README，离开预览页就清掉
+    var previewContent by remember { mutableStateOf<PreviewContent?>(null) }
     var query by remember { mutableStateOf("") }
     var net by remember { mutableStateOf<NetStatus?>(null) }
     var operationBusy by remember { mutableStateOf(false) }
@@ -266,6 +269,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 val wanted = listOfNotNull(lastVisible, selected?.id)
                 val needed = before?.let { st -> wanted.mapNotNull { st.indexById[it] }.maxOrNull()?.plus(1) } ?: 0
                 var initialRefs: String? = null
+                var openedReadme: TextDocument? = null
                 val newState = withContext(Dispatchers.IO) {
                     val repo = GitRepo.open(dir)
                     try {
@@ -281,6 +285,8 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                             val ids = result.commits.mapTo(HashSet()) { it.id }
                             if (wanted.any { it !in ids }) result = history.load(GitRepo.PAGE_SIZE)
                         }
+                        // 换了仓库才预览 README，刷新同一个仓库不打断当前查看的提交
+                        if (same == null) openedReadme = repo.workTree?.let { loadReadme(it, preferChinese = Settings.language == Language.ZH) }
                         RepoState.create(repo, result, repo.repository.resolve("HEAD")?.name, history)
                     } catch (e: Throwable) {
                         repo.close()
@@ -303,6 +309,11 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                 val sameRepository = before?.repo?.repository?.directory == newState.repo.repository.directory
                 selected = if (sameRepository) commits.firstOrNull { it.id == selected?.id } ?: defaultSelection(commits, newState.headId)
                     else defaultSelection(commits, newState.headId)
+                // 换了仓库：有 README 就先在正文区域预览它，关掉后回到提交历史
+                if (!sameRepository) {
+                    previewContent = openedReadme?.let(PreviewContent::Document)
+                    if (previewContent != null) view = MainView.PREVIEW else if (view == MainView.PREVIEW) view = MainView.HISTORY
+                }
                 if (!sameRepository) {
                     working = emptyList()
                     stashes = emptyList()
@@ -731,6 +742,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     }
 
     LaunchedEffect(cli) { rootFocus.requestFocus() }
+    LaunchedEffect(view) { if (view != MainView.PREVIEW) previewContent = null }
     LaunchedEffect(windowReshown) { if (windowReshown > 0) { withFrameNanos { }; rootFocus.requestFocus() } }
     LaunchedEffect(cli, s?.result?.refs) {
         val dir = workTree ?: return@LaunchedEffect
@@ -905,7 +917,10 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             if (s == null) {
                 Welcome(loading, Settings.recentRepos, onRecent = { open(File(it), reportSuccess = true) }, onOpen = chooseAndOpen, onClone = ::askClone)
             } else {
-                if (view == MainView.REFLOG) {
+                val previewing = previewContent
+                if (view == MainView.PREVIEW && previewing != null) {
+                    PreviewArea(previewing, onClose = { view = MainView.HISTORY }, modifier = Modifier.fillMaxWidth().weight(1f))
+                } else if (view == MainView.REFLOG) {
                     ReflogView(s.repo, actions, { id -> view = MainView.HISTORY; jumpTo(id, direct = true) }, Modifier.fillMaxWidth().weight(1f), operationBusy || loading || cli == null)
                 } else if (view == MainView.INSIGHTS) {
                     InsightsView(s.repo.workTree ?: s.repo.repository.directory, Modifier.fillMaxWidth().weight(1f))
