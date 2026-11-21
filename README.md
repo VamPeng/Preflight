@@ -1,10 +1,98 @@
-# GitViz
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="design/icon/gitviz-dark.svg">
+    <img src="design/icon/gitviz-light.svg" width="112" alt="GitViz 图标">
+  </picture>
+</p>
 
-Kotlin + Compose Desktop + JGit 写的 git 可视化客户端，还在开发中。
+<h1 align="center">GitViz</h1>
 
-> **功能路线：[docs/ROADMAP.md](docs/ROADMAP.md)**。功能分为基本、重要、非必要三层，每项都标了当前进度和优先级。做新功能前先看这里，做完后更新状态。
+<p align="center">
+  一个看得清分支、也敢放心操作的 Git 图形客户端。<br>
+  Kotlin + Compose Desktop + JGit 编写，主要面向 macOS。
+</p>
 
-## 功能
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform: macOS">
+  <img src="https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.1">
+  <img src="https://img.shields.io/badge/Compose_Desktop-1.8-4285F4" alt="Compose Desktop 1.8">
+  <img src="https://img.shields.io/badge/status-开发中-yellow" alt="开发中">
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/introduction/img/main-dark.png">
+    <img src="site/introduction/img/main-light.png" width="900" alt="GitViz 主界面：分支图、提交历史和提交详情">
+  </picture>
+</p>
+
+## 亮点
+
+**看清历史**
+- 带分支图的提交历史，分支、远程分支、标签、HEAD 一目了然；工具栏同时搜提交、作者、哈希、分支和标签
+- 底部详情浮层：统一／并排 diff、语法高亮、文件历史和 Blame 追溯（跨重命名、合并父提交）
+- 比较分支：两边各自独有的提交和文件差异，可从共同祖先比较
+- 统计和洞察：提交热力图、贡献者和热点文件
+
+**放心改动**
+- 勾选式暂存，支持按 hunk、按单行部分暂存；平铺或按文件夹查看
+- 提交、修改上一次提交、储藏（含未跟踪文件）
+- merge、rebase、cherry-pick、reset 前先列出后果：提交数、是否快进、预计冲突的文件
+- 同一仓库的写操作串行执行，误操作可通过 reflog 找回
+
+**分支与协作**
+- 右键提交和分支完成检出、合并、变基、Cherry-pick、回滚、重置、推送；把分支拖到另一个分支上即可合并或变基
+- 交互式 rebase：调整顺序、改说明、合并、删除提交；rebase 保留合并拓扑，重启后仍可继续或中止
+- 冲突解决：显示共同祖先和双方来源，按块选择或全文编辑
+- 获取、拉取（merge／rebase／ff-only）、推送；强制推送使用 `--force-with-lease`；调用系统 git，沿用已有的 SSH 和钥匙串配置
+- 工作树和子模块管理
+
+**顺手的细节**
+- 教学模式：每次操作都能看到对应的 Git 命令和说明，适合边用边学
+- 文件页：带 git 状态的文件树，包括被忽略的文件
+- 命令面板（Cmd+Shift+P）和完整的键盘操作
+- 浅色和深色主题，石墨橙配色
+
+<table>
+  <tr>
+    <td width="50%"><img src="site/introduction/img/staging-dark.png" alt="本地改动与按行暂存"></td>
+    <td width="50%"><img src="site/introduction/img/settings-dark.png" alt="设置页"></td>
+  </tr>
+  <tr>
+    <td align="center">本地改动与按行暂存</td>
+    <td align="center">设置</td>
+  </tr>
+</table>
+
+## 快速开始
+
+目前还没有发布安装包，需要从源码构建。准备 JDK 17–21（Android Studio 自带的 JBR 21 就行）和 Git：
+
+```bash
+git clone https://github.com/VamPeng/gitviz.git
+cd gitviz
+./gradlew run
+```
+
+打包成本机安装包（macOS 上生成 `.dmg`），产物在 `build/compose/packages.noindex/`：
+
+```bash
+./gradlew packageDistributionForCurrentOS
+```
+
+## 文档
+
+- [功能路线](docs/ROADMAP.md)：功能分为基本、重要、非必要三层，每项都标了当前进度和优先级
+- [待办与验证缺口](docs/PLAN.md)
+- [开发约定](AGENTS.md)
+- [界面原型](docs/prototype/)
+
+## 完整功能列表
+
+<details>
+<summary>展开查看全部功能说明</summary>
+
 - 教学模式：设置中开启，在操作反馈里查看和复制对应 Git 命令与说明
 - 统计和洞察：提交热力图、贡献者和热点文件；完整本地历史去重扫描，可选时间范围、刷新或取消
 - 交互式 rebase：从提交右键或命令面板进入，编辑线性区间的顺序、说明、合并和删除；编辑后直接执行，可继续或中止
@@ -39,6 +127,8 @@ Kotlin + Compose Desktop + JGit 写的 git 可视化客户端，还在开发中�
 - 界面信息（2026-11-16 视觉改版）：工具栏标题旁显示当前分支名，拉取、推送按钮带待处理提交数角标（领先／落后数不在工具栏重复写）；提交列表顶部有「未提交的改动 · N 个文件」行，点击进本地改动；提交行末尾标「合并」「有正文」；侧边栏本地分支显示领先／落后数，30 天没有新提交的分支标灰并写明天数；打开仓库默认选中 HEAD 提交
 - 提交历史每页加载 2000 条（`GitRepo.PAGE_SIZE`），滚动到底部时继续加载
 
+</details>
+
 ## 使用边界
 
 AI 提交草稿和 Reflog 暂时隐藏日常入口，保留实现，待打磨后再开放。时间轴回放、托管平台（GitHub／GitLab）、Subtree、LFS 页和 AI 分支总结已于 2026-11-13 删除，需要时从 git 历史找回。
@@ -51,7 +141,10 @@ AI 需要手动开启，填写模型、完整 API 端点和令牌，选择 Respo
 
 AI 协议、超时与取消已完成本地测试；真实模型服务尚未联调。
 
-## 运行
+## 开发
+
+做新功能前先看[功能路线](docs/ROADMAP.md)，做完后更新状态。
+
 需要 JDK 17–21（Android Studio 自带的 JBR 21 就行）和 Git。
 
 ```bash
@@ -84,7 +177,10 @@ open "/Applications/GitViz Dev.app"
 
 打包产物统一放在 `build/compose/packages.noindex/`，避免 Spotlight 把构建副本也列成应用入口；日常只使用“应用程序”里的正式版和开发版。
 
-## 结构
+## 代码结构
+
+<details>
+<summary>展开查看各个包和文件的作用</summary>
 
 源码在 `src/main/kotlin/gitviz/`，按职责分包；测试在 `src/test/kotlin/gitviz/` 下用同样的分包。`git`、`logic`、`service` 三个包里没有界面代码。
 
@@ -128,6 +224,12 @@ open "/Applications/GitViz Dev.app"
 | | `ComparisonView.kt`、`BlameTraceView.kt`、`PullDialog.kt` | 分支比较、来源追溯、拉取选项 |
 | | `AiView.kt` | AI 提交草稿与发送确认 |
 
+</details>
+
 界面原型在 `docs/prototype/`，改界面前先看那里。`ScreenshotTest` 会把主界面渲染成图片存到 `build/screens/`。
 
 git 层和界面层是分开的，以后换界面框架也能保留 `git/` 和 `logic/` 两个包。
+
+## 许可证
+
+[MIT](LICENSE) © VamPeng
