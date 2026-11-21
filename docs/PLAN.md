@@ -1,6 +1,6 @@
 # 待办与验证缺口
 
-当前功能状态见 [功能路线](ROADMAP.md)，使用方法见 [README](../README.md)，构建和代码结构见 [STRUCTURE](STRUCTURE.md)，开发约定见 [AGENTS](../AGENTS.md)。本文只保留尚未完成的工作和验证缺口；已完成计划、旧验收流水和已删除功能的设计从 Git 历史查阅。
+当前功能状态见 [功能路线](ROADMAP.md)，使用方法见 [README](../README.zh-CN.md)，构建和代码结构见 [STRUCTURE](STRUCTURE.md)，开发约定见 [AGENTS](../AGENTS.md)。本文只保留尚未完成的工作和验证缺口；已完成计划、旧验收流水和已删除功能的设计从 Git 历史查阅。
 
 ## 待讨论的改进
 

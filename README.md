@@ -1,15 +1,19 @@
 <p align="center">
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="design/icon/gitviz-dark.svg">
-    <img src="design/icon/gitviz-light.svg" width="112" alt="GitViz 图标">
+    <img src="design/icon/gitviz-light.svg" width="112" alt="GitViz icon">
   </picture>
 </p>
 
 <h1 align="center">GitViz</h1>
 
 <p align="center">
-  <b>看得清分支，也敢放心操作的 Git 桌面客户端</b><br>
-  打开仓库就能看懂发生了什么，动手之前先知道会发生什么。
+  <b>A Git desktop client that shows your branches clearly and lets you act with confidence</b><br>
+  Understand your repository at a glance, and see what an operation will do before you run it.
 </p>
 
 <p align="center">
@@ -17,90 +21,90 @@
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform: macOS">
   <img src="https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.1">
   <img src="https://img.shields.io/badge/Compose_Desktop-1.8-4285F4" alt="Compose Desktop 1.8">
-  <img src="https://img.shields.io/badge/status-开发中-yellow" alt="开发中">
+  <img src="https://img.shields.io/badge/status-in_development-yellow" alt="Status: in development">
 </p>
 
 <p align="center">
-  <a href="#功能">功能</a> ·
-  <a href="#安装">安装</a> ·
-  <a href="#上手">上手</a> ·
-  <a href="#安全与隐私">安全与隐私</a> ·
-  <a href="#当前状态">当前状态</a> ·
-  <a href="docs/ROADMAP.md">路线图</a>
+  <a href="#features">Features</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#security-and-privacy">Security &amp; privacy</a> ·
+  <a href="#project-status">Status</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/introduction/img/main-dark.png">
-    <img src="site/introduction/img/main-light.png" width="900" alt="GitViz 主界面：分支图、提交历史和提交详情">
+    <img src="site/introduction/img/main-light.png" width="900" alt="GitViz main window: branch graph, commit history and commit details">
   </picture>
 </p>
 
-## 为什么是 GitViz
+## Why GitViz
 
 <table>
   <tr>
     <td width="33%" valign="top">
-      <h3>👀 看得清</h3>
-      分支图每条分支颜色固定，悬停一个提交只点亮它所在的那条线。几万个提交也能流畅滚动。
+      <h3>👀 See clearly</h3>
+      Every branch keeps its own color in the graph, and hovering a commit highlights only the line it belongs to. Scrolling stays smooth even with tens of thousands of commits.
     </td>
     <td width="33%" valign="top">
-      <h3>🛡️ 先看后果</h3>
-      合并、变基、Cherry-pick、重置之前，先告诉你会带入几个提交、能否快进、哪些文件可能冲突。
+      <h3>🛡️ Know the outcome first</h3>
+      Before a merge, rebase, cherry-pick or reset, GitViz tells you how many commits are involved, whether it can fast-forward, and which files may conflict.
     </td>
     <td width="33%" valign="top">
-      <h3>📖 边用边学</h3>
-      打开教学模式，每次操作都会显示对应的 Git 命令和说明，慢慢就会用命令行了。
+      <h3>📖 Learn as you go</h3>
+      Turn on <b>Show Git commands</b> to see the equivalent Git command and an explanation for every operation, and pick up the command line along the way.
     </td>
   </tr>
 </table>
 
-## 功能
+## Features
 
-### 浏览历史
+### Browse history
 
-- **提交图**：本地分支、远程分支、标签、HEAD 和储藏都画在图上，侧边栏点一下就能跳到对应提交
-- **搜索与过滤**：一个搜索框同时搜提交说明、作者、哈希、分支和标签；可以只看某几条分支，或只看某个文件的历史
-- **提交详情**：在底部浮层查看，可以拖高或铺满；统一或并排 diff，带行号和语法高亮
-- **Blame 追溯**：逐行看是谁在哪次提交改的，跨重命名、跨合并一路往前追
-- **比较分支**：两条分支各自独有的提交和文件差异，一目了然
-- **统计和洞察**：提交热力图、贡献者排行、改动最频繁的文件
+- **Commit graph**: local branches, remote branches, tags, HEAD and stashes are all drawn on the graph; click a ref in the sidebar to jump to its commit
+- **Search and filter**: one search box covers commit messages, authors, hashes, branches and tags; show only selected branches, or only the history of one file
+- **Commit details**: in a bottom panel you can drag taller or expand to fill the window; unified or side-by-side diffs with line numbers and syntax highlighting
+- **Blame tracing**: see who changed each line in which commit, and keep following it back across renames and merges
+- **Branch comparison**: commits and file differences unique to each side of two branches
+- **Insights**: commit heatmap, top contributors and most frequently changed files
 
-### 提交改动
+### Commit changes
 
-<img src="site/introduction/img/staging-dark.png" width="460" align="right" alt="本地改动与按行暂存">
+<img src="site/introduction/img/staging-dark.png" width="460" align="right" alt="Local changes with line-level staging">
 
-- 每个文件一个勾选框，批量暂存、取消暂存或丢弃
-- 按代码块，甚至按单行暂存
-- 平铺或按文件夹查看改动
-- 提交，或修改上一次提交
-- 储藏改动，未跟踪的文件也能一起储藏
-- 文件有变化时自动刷新
+- A checkbox on every file to stage, unstage or discard in bulk
+- Stage by hunk, or even by single line
+- View changes as a flat list or grouped by folder
+- Commit, or amend the last commit
+- Stash changes, including untracked files
+- Refreshes automatically when files change
 
 <br clear="right">
 
-### 分支与协作
+### Branches and collaboration
 
-- **右键即可操作**：检出、新建分支、打标签、合并、变基、Cherry-pick、回滚、重置、推送
-- **拖拽分支**：把一个分支拖到另一个分支上，选择合并或变基
-- **交互式 rebase**：调整提交顺序、改说明、合并或删除提交
-- **解决冲突**：同时显示共同祖先和双方版本，按块选择保留哪一边，也可以直接编辑全文
-- **同步远程**：获取、拉取（merge／rebase／仅快进）、推送；强制推送使用更安全的 `--force-with-lease`；进行中的网络操作可以取消
-- **工作树和子模块**：在侧边栏查看、打开和管理
+- **Right-click actions**: checkout, new branch, tag, merge, rebase, cherry-pick, revert, reset, push
+- **Drag and drop branches**: drop one branch onto another, then choose merge or rebase
+- **Interactive rebase**: reorder commits, reword messages, squash or drop commits
+- **Conflict resolution**: shows the common ancestor and both sides; pick a side per block, or edit the full text
+- **Remote sync**: fetch, pull (merge / rebase / fast-forward only) and push; force pushes use the safer `--force-with-lease`; network operations in progress can be cancelled
+- **Worktrees and submodules**: view, open and manage them from the sidebar
 
-### 其他
+### More
 
-- **文件页**：带 Git 状态的完整文件树，包括被忽略的文件，可按名称筛选和排序
-- **键盘操作**：命令面板和常用快捷键，不碰鼠标也能操作
-- **界面**：浅色和深色主题，中文和英文界面
-- **多仓库**：在工具栏切换最近打开的仓库，或克隆新仓库
+- **Files view**: the full file tree with Git status, including ignored files, with name filtering and sorting
+- **Keyboard friendly**: a command palette and common shortcuts let you work without the mouse
+- **Appearance**: light and dark themes, English and Chinese interface
+- **Multiple repositories**: switch between recent repositories from the toolbar, or clone a new one
 
-## 安装
+## Installation
 
-目前还没有发布安装包，需要从源码构建。GitViz 以 macOS 为主要平台，需要先装好：
+There is no prebuilt release yet, so you need to build from source. GitViz targets macOS first. You will need:
 
-- JDK 17–21（Android Studio 自带的 JBR 21 就可以）
-- Git（建议 2.38 及以上，操作前的冲突预判会用到）
+- JDK 17–21 (the JBR 21 bundled with Android Studio works)
+- Git (2.38 or later recommended; used to predict conflicts before an operation)
 
 ```bash
 git clone https://github.com/VamPeng/gitviz.git
@@ -108,53 +112,53 @@ cd gitviz
 ./gradlew run
 ```
 
-也可以打包成安装包（macOS 上生成 `.dmg`），产物在 `build/compose/packages.noindex/`：
+You can also build an installer (a `.dmg` on macOS). The output goes to `build/compose/packages.noindex/`:
 
 ```bash
 ./gradlew packageDistributionForCurrentOS
 ```
 
-## 上手
+## Getting started
 
-1. 点「打开仓库」选择本地的 Git 仓库，或者克隆一个新仓库
-2. 在提交列表里单击提交查看详情，在左侧侧边栏点分支跳到对应位置
-3. 想做的操作大多在右键菜单里；拿不准的话，先在设置里打开**教学模式**
+1. Click **Open repository** to choose a local Git repository, or clone a new one
+2. Click a commit in the list to see its details; click a branch in the sidebar to jump to it
+3. Most actions live in the right-click menus. Not sure what something does? Turn on **Show Git commands** under **Learning** in Settings first
 
-常用快捷键（Windows／Linux 上把 ⌘ 换成 Ctrl）：
+Common shortcuts (use Ctrl instead of ⌘ on Windows / Linux):
 
-| 快捷键 | 作用 |
+| Shortcut | Action |
 |---|---|
-| `⌘ F` | 搜索 |
-| `⌘ R` | 刷新 |
-| `⌘ ⇧ P` | 命令面板 |
-| `⌘ Enter` | 提交 |
-| `j` / `k` 或 `↑` / `↓` | 在列表中移动 |
-| `Enter` | 打开所选项 |
-| `Esc` | 退出搜索或选择 |
-| `⌘ W` | 关闭窗口，应用继续在后台运行（macOS） |
+| `⌘ F` | Search |
+| `⌘ R` | Refresh |
+| `⌘ ⇧ P` | Command palette |
+| `⌘ Enter` | Commit |
+| `j` / `k` or `↑` / `↓` | Move through lists |
+| `Enter` | Open the selected item |
+| `Esc` | Leave search or selection |
+| `⌘ W` | Close the window and keep the app running (macOS) |
 
-## 安全与隐私
+## Security and privacy
 
-- **密码不经过 GitViz**：需要认证时由 git 和 ssh 弹出 macOS 系统对话框，沿用你已有的 SSH 密钥和钥匙串，应用不读取也不保存密码
-- **使用系统自带的 git**：所有写操作都调用你电脑上的 git，行为和命令行一致
-- **操作有保护**：同一仓库的写操作按顺序执行，多开 GitViz 也不会同时写入；丢弃改动、硬重置、强制推送前都会确认
-- **误操作可以找回**：GitViz 不额外备份，提交可以通过 Git 的 reflog 找回
+- **Passwords never pass through GitViz**: when authentication is needed, git and ssh show the macOS system dialog and reuse your existing SSH keys and Keychain; the app neither reads nor stores passwords
+- **Uses your system git**: every write operation runs the git installed on your machine, so behavior matches the command line
+- **Guarded operations**: write operations on the same repository run one at a time, even across multiple GitViz windows; discarding changes, hard resets and force pushes ask for confirmation first
+- **Mistakes are recoverable**: GitViz does not make extra backups; commits can be recovered from Git's reflog
 
-## 当前状态
+## Project status
 
-GitViz 还在积极开发中，日常的查看、提交、分支和同步操作都已可用。每项功能的进度见[功能路线](docs/ROADMAP.md)，待办事项见 [PLAN](docs/PLAN.md)。
+GitViz is under active development. Everyday viewing, committing, branching and syncing already work. See the [roadmap](docs/ROADMAP.md) for the status of each feature and the [plan](docs/PLAN.md) for open work (both in Chinese).
 
-暂时的限制：
+Current limitations:
 
-- 还没有发布安装包，Windows 和 Linux 也还没有经过验证
-- AI 生成提交说明、Reflog 视图已经实现，但暂时隐藏入口，打磨后再开放
-- 交互式 rebase 只能编辑当前分支上的一段线性提交
-- Git LFS 文件只显示指针信息
+- No prebuilt release yet, and Windows and Linux have not been verified
+- AI-generated commit messages and the Reflog view are implemented but hidden for now, until they are polished
+- Interactive rebase only edits a linear range of commits on the current branch
+- Git LFS files show pointer information only
 
-## 参与开发
+## Contributing
 
-想要构建、调试或修改代码，请看[开发与代码结构](docs/STRUCTURE.md)。欢迎提 Issue 报告问题或提建议。
+To build, debug or change the code, see [Development and code structure](docs/STRUCTURE.md) (in Chinese). Issues with bug reports and suggestions are welcome.
 
-## 许可证
+## License
 
 [MIT](LICENSE) © VamPeng

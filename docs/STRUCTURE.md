@@ -1,6 +1,6 @@
 # 开发与代码结构
 
-面向想要构建、调试或修改 GitViz 的开发者。使用介绍见 [README](../README.md)，功能进度见 [功能路线](ROADMAP.md)。
+面向想要构建、调试或修改 GitViz 的开发者。使用介绍见 [README](../README.zh-CN.md)，功能进度见 [功能路线](ROADMAP.md)。
 
 ## 开发环境
 
