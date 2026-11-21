@@ -29,7 +29,8 @@ data class MdSpan(
 )
 
 fun parseMarkdown(source: String): List<MdBlock> {
-    val lines = source.removePrefix("﻿").replace("\r\n", "\n").replace('\r', '\n').replace("\t", "    ").split('\n')
+    // Tab 可能是 Makefile 命令或 TSV 数据的一部分，不能在解析前改写原文。
+    val lines = source.removePrefix("﻿").replace("\r\n", "\n").replace('\r', '\n').split('\n')
     val references = HashMap<String, String>()
     for (line in lines) ReferenceDefinition.matchEntire(line)?.let { references.putIfAbsent(normalizeLabel(it.groupValues[1]), it.groupValues[2]) }
     return BlockParser(references).parse(lines)
@@ -39,7 +40,7 @@ private val ReferenceDefinition = Regex("""^ {0,3}\[([^\]]+)]:\s*<?(\S+?)>?(?:\s
 private val AtxHeading = Regex("""^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$""")
 private val ThematicBreak = Regex("""^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$""")
 private val Fence = Regex("""^( {0,3})(`{3,}|~{3,})\s*([^`\s]*).*$""")
-private val ListMarker = Regex("""^( {0,3})([-*+]|\d{1,9}[.)])( +|$)(.*)$""")
+private val ListMarker = Regex("""^( {0,3})([-*+]|\d{1,9}[.)])([ \t]+|$)(.*)$""")
 private val TableDelimiter = Regex("""^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$""")
 private val SetextUnderline = Regex("""^ {0,3}(=+|-+)[ \t]*$""")
 private val HtmlBlockStart = Regex("""^ {0,3}</?([A-Za-z][A-Za-z0-9-]*)(\s|/?>|$)""")
@@ -73,7 +74,7 @@ private class BlockParser(private val references: Map<String, String>) {
                 i++
                 while (i < lines.size) {
                     val closing = lines[i].trimStart()
-                    if (lines[i].length - closing.length <= 3 && closing.startsWith(fence) && closing.trimEnd().all { it == fence[0] }) { i++; break }
+                    if (lines[i].indentWidth() <= 3 && closing.startsWith(fence) && closing.trimEnd().all { it == fence[0] }) { i++; break }
                     body += lines[i].removeIndent(indent)
                     i++
                 }
@@ -111,13 +112,13 @@ private class BlockParser(private val references: Map<String, String>) {
                 continue
             }
 
-            if (line.trimStart().startsWith(">") && line.indexOf('>') <= 3) {
+            if (line.trimStart().startsWith(">") && line.indentWidth() <= 3) {
                 flush()
                 val quoted = ArrayList<String>()
                 while (i < lines.size && lines[i].isNotBlank()) {
                     val l = lines[i]
                     val gt = l.indexOf('>')
-                    quoted += if (gt in 0..3 && l.substring(0, gt).isBlank()) l.substring(gt + 1).removePrefix(" ") else l
+                    quoted += if (gt in 0..3 && l.indentWidth() <= 3 && l.substring(0, gt).isBlank()) l.substring(gt + 1).removePrefix(" ") else l
                     i++
                 }
                 blocks += MdBlock.Quote(parse(quoted))
@@ -143,9 +144,9 @@ private class BlockParser(private val references: Map<String, String>) {
                 continue
             }
 
-            if (paragraph.isEmpty() && line.startsWith("    ")) {
+            if (paragraph.isEmpty() && line.indentWidth() >= 4) {
                 val body = ArrayList<String>()
-                while (i < lines.size && (lines[i].startsWith("    ") || lines[i].isBlank())) { body += lines[i].removeIndent(4); i++ }
+                while (i < lines.size && (lines[i].indentWidth() >= 4 || lines[i].isBlank())) { body += lines[i].removeIndent(4); i++ }
                 blocks += MdBlock.Code("", body.joinToString("\n").trimEnd('\n'))
                 continue
             }
@@ -168,7 +169,9 @@ private class BlockParser(private val references: Map<String, String>) {
             val m = ListMarker.matchEntire(lines[i]) ?: break
             val mark = m.groupValues[2]
             if (mark[0].isDigit() != ordered || mark.last() != delimiter) break
-            val contentIndent = m.groupValues[1].length + mark.length + m.groupValues[3].length.coerceIn(1, 4)
+            val markerEnd = m.groupValues[1].length + mark.length
+            val padding = m.groupValues[3].columnsAfter(markerEnd) - markerEnd
+            val contentIndent = markerEnd + padding.coerceIn(1, 4)
             val body = arrayListOf(m.groupValues[4])
             i++
             while (i < lines.size) {
@@ -199,12 +202,22 @@ private class BlockParser(private val references: Map<String, String>) {
     }
 }
 
-private fun String.indentWidth() = length - trimStart(' ').length
+/** 仅在计算结构缩进时按四列 Tab stop 展开，正文中的 Tab 保持不变。 */
+private fun String.columnsAfter(start: Int = 0): Int = fold(start) { column, c ->
+    if (c == '\t') column + 4 - column % 4 else column + 1
+}
+
+private fun String.indentWidth() = takeWhile { it == ' ' || it == '\t' }.columnsAfter()
 
 private fun String.removeIndent(count: Int): String {
     var n = 0
-    while (n < count && n < length && this[n] == ' ') n++
-    return substring(n)
+    var column = 0
+    while (column < count && n < length && (this[n] == ' ' || this[n] == '\t')) {
+        column += if (this[n] == '\t') 4 - column % 4 else 1
+        n++
+    }
+    // 结构边界落在 Tab 中间时，只把这个 Tab 剩下的列转为空格。
+    return " ".repeat((column - count).coerceAtLeast(0)) + substring(n)
 }
 
 /** 段落里的换行：行尾两个空格或反斜杠是硬换行，其余合成一个空格。 */

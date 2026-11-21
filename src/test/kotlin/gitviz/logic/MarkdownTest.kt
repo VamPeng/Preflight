@@ -46,6 +46,24 @@ class MarkdownTest {
         assertEquals("a\nb", code.text)
     }
 
+    @Test fun `fenced and inline code retain tabs`() {
+        val blocks = parseMarkdown("```makefile\nall:\n\techo hello\n```\n\n  ```tsv\n  A\tB\n  ```\n\nUse `A\tB`.")
+        assertEquals("all:\n\techo hello", assertIs<MdBlock.Code>(blocks[0]).text)
+        assertEquals("A\tB", assertIs<MdBlock.Code>(blocks[1]).text)
+        assertEquals("A\tB", paragraph(blocks[2]).single { it.code }.text)
+    }
+
+    @Test fun `indented code consumes structural tabs but retains content tabs`() {
+        val code = assertIs<MdBlock.Code>(parseMarkdown("\t\tcmd\tvalue\n  \t\tmore\tdata").single())
+        assertEquals("\tcmd\tvalue\n\tmore\tdata", code.text)
+    }
+
+    @Test fun `tab indented list fences retain code tabs`() {
+        val list = assertIs<MdBlock.ListBlock>(parseMarkdown("-\titem\n\t```tsv\n\tA\tB\n\t```").single())
+        assertEquals("item", text(paragraph(list.items.single().blocks[0])))
+        assertEquals("A\tB", assertIs<MdBlock.Code>(list.items.single().blocks[1]).text)
+    }
+
     @Test fun `lists nest, number and check`() {
         val blocks = parseMarkdown("- a\n  - nested\n- [x] done\n- [ ] todo\n\n3. three\n4. four\n   continued\n")
         val bullets = assertIs<MdBlock.ListBlock>(blocks[0])

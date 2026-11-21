@@ -44,11 +44,11 @@ class PreviewAreaTest {
     }
 
     @Test fun `selecting across blocks copies text with paragraph, list and table breaks`() {
-        val doc = document("# Title\n\nFirst **paragraph**.\n\n- one\n- two\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```\ncode line\n```")
+        val doc = document("# Title\n\nFirst **paragraph**.\n\n- one\n- two\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```makefile\nall:\n\techo hello\n```")
         SelectionScene(1000, 700) { PreviewArea(PreviewContent.Document(doc), onClose = {}, modifier = Modifier.fillMaxSize()) }.use { s ->
             s.settle(20)
             val copied = s.copyDrag(Offset(103f, 75f), Offset(900f, 680f))
-            assertEquals("Title\n\nFirst paragraph.\n\none\ntwo\n\nA\tB\n1\t2\n\ncode line", copied)
+            assertEquals("Title\n\nFirst paragraph.\n\none\ntwo\n\nA\tB\n1\t2\n\nall:\n\techo hello", copied)
         }
     }
 
