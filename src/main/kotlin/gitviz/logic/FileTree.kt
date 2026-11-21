@@ -162,6 +162,42 @@ internal fun listDirectory(root: File, dir: String, status: TreeStatus): DirList
     else DirListing(entries)
 }
 
+/** 文件页按哪一列排序。 */
+enum class SortColumn { NAME, SIZE, MODIFIED }
+
+/**
+ * 排序方式。不管按哪一列，目录都在文件前面；按大小排时目录没有大小，按名字排。
+ * 已删除、磁盘上没有的文件没有大小和修改时间，按大小、修改时间排时总在最后。值一样的按名字排。
+ */
+data class FileSort(val column: SortColumn = SortColumn.NAME, val descending: Boolean = false) {
+    /** 点了某一列的表头：同一列就反过来，换一列时名字从 A 排起，大小、修改时间从大、从新排起。 */
+    fun clicked(c: SortColumn): FileSort = if (c == column) copy(descending = !descending) else FileSort(c, c != SortColumn.NAME)
+
+    companion object {
+        val Default = FileSort()
+    }
+}
+
+private val byName: Comparator<FileEntry> = compareBy<FileEntry>({ it.name.lowercase() }, { it.name })
+
+internal fun FileSort.comparator(): Comparator<FileEntry> {
+    val name = if (column == SortColumn.NAME && descending) byName.reversed() else byName
+    val value: Comparator<FileEntry>? = when (column) {
+        SortColumn.NAME -> null
+        SortColumn.SIZE -> compareBy { if (it.isDir) 0L else it.size }
+        SortColumn.MODIFIED -> compareBy { it.modified }
+    }
+    var c = compareBy<FileEntry> { !it.isDir }
+    if (value != null) {
+        c = c.thenBy { it.missing }.then(if (descending) value.reversed() else value)
+    }
+    return c.then(name)
+}
+
+/** 按 sort 排好的一份，默认的名字顺序 listDirectory 已经排好了，不用再排。 */
+internal fun List<FileEntry>.sortedFor(sort: FileSort): List<FileEntry> =
+    if (sort == FileSort.Default) this else sortedWith(sort.comparator())
+
 /**
  * 文件树的一行：一个文件或目录，或者展开的目录下面的提示行。
  * Item.expanded：目录是否展开，文件为 null。hit：筛选时名字里匹配的那一段。
@@ -175,10 +211,10 @@ sealed class DirRow(val key: String, val depth: Int) {
 }
 
 /**
- * 按展开的目录把工作区摊成一棵树，文件和目录都在里面，目录在前。还没读到的展开目录下面放一行 Loading。
+ * 按展开的目录把工作区摊成一棵树，文件和目录都在里面，目录在前，同一层按 sort 排。还没读到的展开目录下面放一行 Loading。
  * 目录一律可以展开：不预先去看里面有没有东西，展开了才读。
  */
-internal fun flattenDirTree(listings: Map<String, DirListing>, expanded: Set<String>, showIgnored: Boolean): List<DirRow> {
+internal fun flattenDirTree(listings: Map<String, DirListing>, expanded: Set<String>, showIgnored: Boolean, sort: FileSort = FileSort.Default): List<DirRow> {
     val rows = ArrayList<DirRow>()
     fun visible(e: FileEntry) = showIgnored || !e.ignored
     fun walk(dir: String, depth: Int) {
@@ -186,7 +222,7 @@ internal fun flattenDirTree(listings: Map<String, DirListing>, expanded: Set<Str
             rows += DirRow.Loading(dir, depth)
             return
         }
-        val shown = listing.entries.filter(::visible)
+        val shown = listing.entries.filter(::visible).sortedFor(sort)
         if (shown.isEmpty() && dir.isNotEmpty()) {
             val hidden = listing.entries.size - shown.size
             rows += DirRow.Note(dir, depth, if (hidden > 0) t("Only ignored files here", "这里只有被忽略的文件") else t("Empty folder", "空文件夹"))
@@ -249,7 +285,7 @@ internal fun scanWorkTree(root: File, status: TreeStatus, maxEntries: Int = MAX_
  * 按名称筛选（不分大小写，匹配名字里的任意一段）：留下匹配的项和它们的所有上级目录，上级全部展开。
  * 目录名本身匹配时只显示它自己，不把里面的东西都带出来（里面名字匹配的还是会出现）。
  */
-internal fun filterTree(scan: TreeScan, query: String, showIgnored: Boolean): List<DirRow> {
+internal fun filterTree(scan: TreeScan, query: String, showIgnored: Boolean, sort: FileSort = FileSort.Default): List<DirRow> {
     val q = query.trim().lowercase()
     if (q.isEmpty()) return emptyList()
     fun visible(e: FileEntry) = showIgnored || !e.ignored
@@ -260,7 +296,7 @@ internal fun filterTree(scan: TreeScan, query: String, showIgnored: Boolean): Li
     }
     val rows = ArrayList<DirRow>()
     fun walk(dir: String, depth: Int) {
-        for (e in scan.listings[dir]?.entries.orEmpty()) {
+        for (e in scan.listings[dir]?.entries.orEmpty().sortedFor(sort)) {
             if (!visible(e)) continue
             val at = e.name.lowercase().indexOf(q)
             val inside = e.isDir && hasMatch(e.path)

@@ -1,6 +1,7 @@
 package gitviz.ui
 
 import gitviz.git.*
+import gitviz.logic.*
 import gitviz.platform.*
 import gitviz.service.*
 import gitviz.ui.history.*
@@ -66,6 +67,17 @@ internal object Settings {
     fun updateShowIgnoredFiles(value: Boolean) {
         showIgnoredFiles = value
         prefs.putBoolean("showIgnoredFiles", value)
+    }
+
+    /** 文件页按哪一列排序。 */
+    var fileSort by mutableStateOf(
+        FileSort(SortColumn.entries.firstOrNull { it.name == prefs.get("fileSortColumn", "") } ?: SortColumn.NAME, prefs.getBoolean("fileSortDescending", false)))
+        private set
+
+    fun updateFileSort(value: FileSort) {
+        fileSort = value
+        prefs.put("fileSortColumn", value.column.name)
+        prefs.putBoolean("fileSortDescending", value.descending)
     }
 
     /** 改动页的文件按文件夹分层显示；否则一个文件一行。 */

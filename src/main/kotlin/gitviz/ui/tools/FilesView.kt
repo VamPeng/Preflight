@@ -88,6 +88,7 @@ internal fun FilesView(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     var showIgnored by remember { mutableStateOf(Settings.showIgnoredFiles) }
+    val sort = Settings.fileSort
     var expanded by remember(root) { mutableStateOf(if (start.isEmpty()) emptySet() else (ancestorsOf(start) + start).toSet()) }
     var selected by remember(root) { mutableStateOf(start.ifEmpty { null }) }
     var query by remember(root) { mutableStateOf(filter) }
@@ -137,8 +138,8 @@ internal fun FilesView(
         scannedWith = st
     }
 
-    val rows = remember(listings, expanded, showIgnored, scan, query) {
-        if (filtering) scan?.let { filterTree(it, query, showIgnored) }.orEmpty() else flattenDirTree(listings, expanded, showIgnored)
+    val rows = remember(listings, expanded, showIgnored, scan, query, sort) {
+        if (filtering) scan?.let { filterTree(it, query, showIgnored, sort) }.orEmpty() else flattenDirTree(listings, expanded, showIgnored, sort)
     }
     val items = remember(rows) { rows.filterIsInstance<DirRow.Item>() }
 
@@ -294,7 +295,7 @@ internal fun FilesView(
             IconButton(Icons.Refresh) { revision++ }
         }
         HorizontalDivider()
-        TableHeader()
+        TableHeader(sort) { Settings.updateFileSort(sort.clicked(it)) }
         HorizontalDivider()
         val now = rememberNowSeconds()
         Box(Modifier.fillMaxWidth().weight(1f).focusRequester(listFocus).onKeyEvent(::onKey).focusable()) {
@@ -370,13 +371,35 @@ private fun Chevron(expanded: Boolean) {
     }
 }
 
+/** 表头。名称、大小、修改时间可以点：点一下按这一列排，再点反过来；正在用的那一列后面有箭头。目录总在前面。 */
 @Composable
-private fun TableHeader() {
+private fun TableHeader(sort: FileSort, onSort: (SortColumn) -> Unit) {
     Row(Modifier.fillMaxWidth().height(24.dp).padding(start = 14.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(t("Name", "名称"), fontSize = TypeScale.Caption, color = Palette.Faint, modifier = Modifier.weight(1f))
+        Box(Modifier.weight(1f)) {
+            // 表头文字有内边距，挪回去跟下面的列对齐
+            SortHeader(t("Name", "名称"), SortColumn.NAME, sort, onSort, Modifier.offset(x = (-4).dp))
+        }
         HeaderCell(t("Status", "状态"), StatusColumn)
-        HeaderCell(t("Size", "大小"), SizeColumn)
-        HeaderCell(t("Modified", "修改时间"), TimeColumn)
+        Box(Modifier.width(SizeColumn), contentAlignment = Alignment.CenterEnd) {
+            SortHeader(t("Size", "大小"), SortColumn.SIZE, sort, onSort, Modifier.offset(x = 4.dp))
+        }
+        Box(Modifier.width(TimeColumn), contentAlignment = Alignment.CenterEnd) {
+            SortHeader(t("Modified", "修改时间"), SortColumn.MODIFIED, sort, onSort, Modifier.offset(x = 4.dp))
+        }
+    }
+}
+
+@Composable
+private fun SortHeader(text: String, column: SortColumn, sort: FileSort, onSort: (SortColumn) -> Unit, modifier: Modifier = Modifier) {
+    val active = sort.column == column
+    Row(
+        modifier.clip(RoundedCornerShape(4.dp)).hoverRow().clickable { onSort(column) }.padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(text, fontSize = TypeScale.Caption, color = if (active) Palette.Muted else Palette.Faint,
+            fontWeight = if (active) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
+        if (active) Icon(if (sort.descending) Icons.ChevronDown else Icons.ChevronUp, Palette.Muted, size = 10.dp, strokeWidth = 3f)
     }
 }
 

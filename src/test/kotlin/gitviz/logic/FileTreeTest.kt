@@ -164,6 +164,40 @@ class FileTreeTest {
     }
 
     @Test
+    fun `sorts by name, size or modified time with folders first`() {
+        fun e(name: String, size: Long = 0, modified: Long = 0, dir: Boolean = false, missing: Boolean = false) =
+            FileEntry(name, name, dir, FileMark.CLEAN, size = size, modified = modified, missing = missing)
+        val entries = listOf(e("lib", modified = 5, dir = true), e("app", modified = 9, dir = true),
+            e("a.txt", 30, 1), e("B.txt", 10, 3), e("c.txt", 20, 2), e("gone.txt", missing = true))
+        fun order(sort: FileSort) = entries.sortedWith(sort.comparator()).map { it.name }
+        assertEquals(listOf("app", "lib", "a.txt", "B.txt", "c.txt", "gone.txt"), order(FileSort()))
+        assertEquals(listOf("lib", "app", "gone.txt", "c.txt", "B.txt", "a.txt"), order(FileSort(SortColumn.NAME, true)))
+        // 目录没有大小，按名字；已删除的没有大小，总在最后
+        assertEquals(listOf("app", "lib", "a.txt", "c.txt", "B.txt", "gone.txt"), order(FileSort(SortColumn.SIZE, true)))
+        assertEquals(listOf("app", "lib", "B.txt", "c.txt", "a.txt", "gone.txt"), order(FileSort(SortColumn.SIZE, false)))
+        assertEquals(listOf("app", "lib", "B.txt", "c.txt", "a.txt", "gone.txt"), order(FileSort(SortColumn.MODIFIED, true)))
+        assertEquals(listOf("lib", "app", "a.txt", "c.txt", "B.txt", "gone.txt"), order(FileSort(SortColumn.MODIFIED, false)))
+        // 点表头：同一列反过来，换一列时大小、时间从大到小
+        assertEquals(FileSort(SortColumn.NAME, true), FileSort().clicked(SortColumn.NAME))
+        assertEquals(FileSort(SortColumn.SIZE, true), FileSort().clicked(SortColumn.SIZE))
+        assertEquals(FileSort(SortColumn.MODIFIED, false), FileSort(SortColumn.MODIFIED, true).clicked(SortColumn.MODIFIED))
+        assertEquals(FileSort(SortColumn.NAME, false), FileSort(SortColumn.SIZE, true).clicked(SortColumn.NAME))
+    }
+
+    @Test
+    fun `flattened and filtered trees follow the sort order`() {
+        val cli = repo()
+        write("src/big.kt", "x".repeat(500))
+        val status = TreeStatus(cli.treeStatus())
+        val listings = listOf("", "src").associateWith { listDirectory(root, it, status) }
+        val bySize = FileSort(SortColumn.SIZE, true)
+        assertEquals(listOf("src/", "  old›", "  big.kt", "  a.kt", "  b.kt", ".gitignore", "README.md"),
+            flattenDirTree(listings, setOf("src"), true, bySize).map(::label))
+        assertEquals(listOf("src/", "  old/", "    gone.kt", "  big.kt", "  a.kt", "  b.kt"),
+            filterTree(scanWorkTree(root, status), ".kt", true, bySize).map(::label))
+    }
+
+    @Test
     fun `an open folder says when it is empty or only has hidden ignored files`() {
         val cli = repo()
         File(root, "empty").mkdirs()
