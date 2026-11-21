@@ -281,7 +281,7 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
 
     /**
      * 只提交这几个文件在工作区里的样子，不经过暂存区（`git commit --only`）；别的文件已暂存的改动原样留在暂存区。
-     * 新文件 git 还不认识，先 `add -N` 登记；提交失败再把登记撤掉，文件回到未跟踪。
+     * 新文件 git 还不认识，先 `add -N` 登记；登记或提交失败都撤回本次登记，文件回到未跟踪。
      */
     fun commitOnly(message: String, files: List<WorkingFile>): GitResult {
         require(files.isNotEmpty()) { "Nothing to commit" }
@@ -292,11 +292,19 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
             if (oldPath == null) listOf(file) else listOf(file, file.copy(path = oldPath, oldPath = null))
         }.distinctBy { it.path }
         return coordinator.execute(OperationRequest(OperationKind.COMMIT)) {
-            val added = onPaths(listOf("add", "-N"), fresh)
-            if (!added.ok) return@execute added
+            // 界面的未跟踪状态可能已过期；只清理操作开始时尚未进入索引的路径。
+            val indexed = if (fresh.isEmpty()) emptySet() else read("ls-files", "--cached", "-z").split('\u0000').toSet()
+            val registering = fresh.filter { it.path !in indexed }
+            fun rollback(result: GitResult): GitResult {
+                // add -N 可以部分成功；未登记的路径也在列表里，需要忽略未匹配项。
+                val undone = onPaths(listOf("rm", "--cached", "-q", "--ignore-unmatch"), registering)
+                return if (undone.ok) result else result.copy(output = result.output + "\n" +
+                    t("Couldn't undo new-file registration:", "无法撤回新文件登记：") + "\n" + undone.output)
+            }
+            val added = onPaths(listOf("add", "-N"), registering)
+            if (!added.ok) return@execute rollback(added)
             val result = onPaths(listOf("commit", "--only", "-m", message), paths)
-            if (!result.ok) onPaths(listOf("rm", "--cached", "-q"), fresh)
-            result
+            if (result.ok) result else rollback(result)
         }
     }
 

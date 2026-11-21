@@ -548,6 +548,28 @@ class GitCliTest {
     }
 
     @Test
+    fun `partial new-file registration is rolled back when add fails`() {
+        prepare()
+        val cli = GitCli(work)
+        for (name in listOf("[fresh]", "blocked", "already-staged")) File(work, name).writeText("$name\n")
+        val picked = cli.status()
+        val headBefore = head()
+        // 状态显示后，外部操作暂存了一个文件，并把另一个加入忽略规则。
+        git(work, "add", "already-staged")
+        File(work, ".gitignore").writeText("blocked\n")
+
+        val result = cli.commitOnly("must fail", picked)
+
+        assertFalse(result.ok)
+        assertTrue("ignored" in result.output, result.output)
+        assertEquals(headBefore, head())
+        assertTrue(file("[fresh]").untracked, "Successful add -N entries must be removed on partial failure")
+        assertTrue(file("already-staged").hasStaged, "An existing index entry must not be removed")
+        assertEquals("already-staged", git(work, "show", ":already-staged"))
+        for (name in listOf("[fresh]", "blocked", "already-staged")) assertEquals("$name\n", File(work, name).readText())
+    }
+
+    @Test
     fun `a failed commit only leaves new files untracked`() {
         prepare()
         File(work, "new").writeText("fresh\n")
