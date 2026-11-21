@@ -31,4 +31,13 @@ class CommandsTest {
         assertTrue(disabled.execute("run"))
         assertEquals(1, calls)
     }
+
+    @Test fun `command or option W closes the window only on macOS`() {
+        assertEquals(isMac, isCloseWindowShortcut(Key.W, meta = true, alt = false, ctrl = false, shift = false))
+        assertEquals(isMac, isCloseWindowShortcut(Key.W, meta = false, alt = true, ctrl = false, shift = false))
+        assertEquals(false, isCloseWindowShortcut(Key.W, meta = false, alt = false, ctrl = false, shift = false))
+        assertEquals(false, isCloseWindowShortcut(Key.W, meta = true, alt = false, ctrl = false, shift = true))
+        assertEquals(false, isCloseWindowShortcut(Key.W, meta = false, alt = false, ctrl = true, shift = false))
+        assertEquals(false, isCloseWindowShortcut(Key.Q, meta = true, alt = false, ctrl = false, shift = false))
+    }
 }

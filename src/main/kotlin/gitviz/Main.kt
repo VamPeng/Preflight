@@ -208,10 +208,14 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     val conflictDrafts = remember { mutableStateMapOf<String, ConflictDraft>() }
     val runningOperation = remember { RunningOperation() }
     var draftSession by remember { mutableStateOf<String?>(null) }
+    // 窗口被 ⌘W 隐藏后每拿回来一次加一；拿回来时键盘焦点已丢，要重新交给根节点，快捷键才继续有效
+    var windowReshown by remember { mutableStateOf(0) }
     val closeAction by rememberUpdatedState<() -> Unit> {
+        // 窗口被 ⌘W 隐藏时退出，确认框要先把窗口拿回来，否则看不见、退出像是没反应
+        fun ask(spec: DialogSpec) { if (!window.isVisible) { window.isVisible = true; windowReshown++ }; window.toFront(); dialog = spec }
         when {
-            operationBusy -> dialog = DialogSpec(t("Operation in progress", "操作正在执行"), t("Wait for the Git operation to finish before closing.", "请等 Git 操作结束后再关闭。"), t("Keep open", "保持打开")) { _, _ -> }
-            conflictDrafts.values.any { it.dirty } -> dialog = DialogSpec(t("Discard unsaved conflict drafts?", "放弃未保存的冲突草稿？"), t("Save the drafts before closing, or discard them and close.", "关闭前请先保存草稿，或放弃草稿后关闭。"), t("Discard and close", "放弃并关闭"), danger = true) { _, _ -> onExit() }
+            operationBusy -> ask(DialogSpec(t("Operation in progress", "操作正在执行"), t("Wait for the Git operation to finish before closing.", "请等 Git 操作结束后再关闭。"), t("Keep open", "保持打开")) { _, _ -> })
+            conflictDrafts.values.any { it.dirty } -> ask(DialogSpec(t("Discard unsaved conflict drafts?", "放弃未保存的冲突草稿？"), t("Save the drafts before closing, or discard them and close.", "关闭前请先保存草稿，或放弃草稿后关闭。"), t("Discard and close", "放弃并关闭"), danger = true) { _, _ -> onExit() })
             else -> onExit()
         }
     }
@@ -222,9 +226,18 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             response.cancelQuit()
             javax.swing.SwingUtilities.invokeLater { closeAction() }
         }
+        // ⌘W／⌥W 只隐藏窗口；点 Dock 图标或再次打开应用时把它拿回来
+        val reopen = java.awt.desktop.AppReopenedListener {
+            javax.swing.SwingUtilities.invokeLater {
+                if (!window.isVisible) { window.isVisible = true; windowReshown++ }
+                window.toFront()
+            }
+        }
+        if (desktop?.isSupported(java.awt.Desktop.Action.APP_EVENT_REOPENED) == true) desktop.addAppEventListener(reopen)
         onDispose {
             registerClose(null)
             if (desktop?.isSupported(java.awt.Desktop.Action.APP_QUIT_HANDLER) == true) desktop.setQuitHandler(null)
+            if (desktop?.isSupported(java.awt.Desktop.Action.APP_EVENT_REOPENED) == true) desktop.removeAppEventListener(reopen)
         }
     }
     var openGeneration by remember { mutableStateOf(0L) }
@@ -718,6 +731,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     }
 
     LaunchedEffect(cli) { rootFocus.requestFocus() }
+    LaunchedEffect(windowReshown) { if (windowReshown > 0) { withFrameNanos { }; rootFocus.requestFocus() } }
     LaunchedEffect(cli, s?.result?.refs) {
         val dir = workTree ?: return@LaunchedEffect
         branchSync = withContext(Dispatchers.IO) { runCatching { GitRepo.open(dir).use { it.branchSync() } }.getOrDefault(emptyMap()) }
@@ -752,11 +766,14 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         AppCommand("continue", t("Continue Git operation", "继续 Git 操作"), available && operation != null && conflicted.isEmpty()) { actions.run(t("Continuing", "正在继续"), t("Continued", "已继续")) { continueOperation() } },
         AppCommand("abort", t("Abort Git operation…", "中止 Git 操作…"), available && operation != null) { dialog = DialogSpec(t("Abort operation", "中止操作"), t("Discard the current conflict resolutions and abort?", "放弃当前冲突处理结果并中止？"), t("Abort", "中止"), danger = true) { _, _ -> runNet(NetOp.ABORT) } },
         AppCommand("palette", t("Command palette", "命令面板"), true, "⌘/Ctrl Shift P") { paletteOpen = true },
+        AppCommand("close-window", t("Close window", "关闭窗口"), isMac, "⌘W / ⌥W") { window.isVisible = false },
     ) + selected?.takeUnless { it.isStash }?.let { c -> commitMenu(c, c.id == s?.headId, currentBranch, actions).filterIsInstance<MenuItem>().mapIndexed { i, item -> AppCommand("selected-$i", item.label, available && !inConflict && item.enabled, action = item.action) } }.orEmpty())
     val drag = remember(cli, operationBusy, loading, inConflict) { BranchDragState(cli != null && !operationBusy && !loading && !inConflict) { a, b -> branchDrop = a to b } }
     CompositionLocalProvider(LocalBranchDrag provides drag, LocalTextFocus provides textFocus, LocalCommands provides registry) {
     Row(Modifier.fillMaxSize().focusRequester(rootFocus).onPreviewKeyEvent { event ->
-        if (event.type != KeyEventType.KeyDown) false else shortcutCommand(event.key, if (isMac) event.isMetaPressed else event.isCtrlPressed, event.isShiftPressed, textFocus.editing)?.let { registry.execute(it) } ?: false
+        if (event.type != KeyEventType.KeyDown) false
+        else if (isCloseWindowShortcut(event.key, event.isMetaPressed, event.isAltPressed, event.isCtrlPressed, event.isShiftPressed)) registry.execute("close-window")
+        else shortcutCommand(event.key, if (isMac) event.isMetaPressed else event.isCtrlPressed, event.isShiftPressed, textFocus.editing)?.let { registry.execute(it) } ?: false
     }.focusable()) {
         if (s != null) {
             // 侧边栏从窗口顶部铺下来，顶上一段留给红绿灯；拖右边缘调整宽度，松手后记住

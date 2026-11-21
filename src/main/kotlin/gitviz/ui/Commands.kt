@@ -37,6 +37,13 @@ internal val LocalCommands = staticCompositionLocalOf<CommandRegistry?> { null }
     DisposableEffect(tracker, id) { onDispose { tracker.active.remove(id) } }
     return onFocusChanged { tracker.active[id] = it.isFocused }
 }
+/**
+ * macOS 上 ⌘W 或 ⌥W 只关闭（隐藏）窗口，应用继续运行；点 Dock 图标再打开。
+ * 其他平台关掉唯一的窗口后无处可回，不处理。
+ */
+internal fun isCloseWindowShortcut(key: Key, meta: Boolean, alt: Boolean, ctrl: Boolean, shift: Boolean): Boolean =
+    isMac && key == Key.W && (meta || alt) && !ctrl && !shift
+
 internal fun shortcutCommand(key: Key, primary: Boolean, shift: Boolean, editing: Boolean): String? {
     if (!primary) return null
     return when {
