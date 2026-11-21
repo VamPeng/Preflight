@@ -81,7 +81,8 @@ object Vibrancy {
     private val process by lazy { NativeLibrary.getProcess() }
     private val msgSend by lazy { process.getFunction("objc_msgSend") }
 
-    private var pendingTask: MainThreadTask? = null // 派发期间要留着引用，否则回调可能被 GC
+    private val pendingTasks = java.util.Collections.synchronizedSet(HashSet<MainThreadTask>()) // 派发期间要留着引用，否则回调可能被 GC
+    @Volatile private var nsWindow: Pointer? = null
 
     private fun interface MainThreadTask : Callback {
         fun invoke(context: Pointer?)
@@ -98,18 +99,44 @@ object Vibrancy {
     /** 返回是否成功；失败时调用方应该退回不透明的样式。 */
     suspend fun install(window: ComposeWindow): Boolean {
         val done = CompletableDeferred<Boolean>()
-        val task = MainThreadTask { done.complete(runCatching { insertEffectView(window) }.getOrDefault(false)) }
-        pendingTask = task
-        runCatching {
+        if (!onMainThread { done.complete(runCatching { insertEffectView(window) }.getOrDefault(false)) }) done.complete(false)
+        return done.await()
+    }
+
+    /**
+     * 双击标题栏：按系统设置“连按窗口标题栏以…”缩放或最小化，默认缩放（铺满／还原）。
+     * 内容铺满了标题栏，系统收不到这次双击，只能由 Compose 转过来。
+     */
+    fun titleBarDoubleClick() {
+        val window = nsWindow ?: return
+        onMainThread {
+            runCatching {
+                val action = objcClass("NSUserDefaults").send("standardUserDefaults")
+                    ?.send("stringForKey:", nsString("AppleActionOnDoubleClick"))
+                    ?.send("UTF8String")?.getString(0, "UTF-8")
+                when (action) {
+                    "None" -> Unit
+                    "Minimize" -> window.call("performMiniaturize:", null)
+                    else -> window.call("zoom:", null) // 未设置或“缩放”“填充”：铺满可用区域，再次双击还原
+                }
+            }
+        }
+    }
+
+    private fun onMainThread(block: () -> Unit): Boolean {
+        lateinit var task: MainThreadTask
+        task = MainThreadTask { try { block() } finally { pendingTasks.remove(task) } }
+        pendingTasks.add(task)
+        return runCatching {
             val mainQueue = process.getGlobalVariableAddress("_dispatch_main_q")
             process.getFunction("dispatch_async_f").invokeVoid(arrayOf(mainQueue, null, task))
-        }.onFailure { done.complete(false) }
-        return done.await().also { pendingTask = null }
+        }.onFailure { pendingTasks.remove(task) }.isSuccess
     }
 
     private fun insertEffectView(window: ComposeWindow): Boolean {
         val nsWindow = findNSWindow(window.title) ?: return false
-        // 标题栏已由 Compose WindowDraggableArea 移动窗口；AppKit 再处理同一拖曳会争抢位置。
+        this.nsWindow = nsWindow
+        // 标题栏已由 Compose TitleBarArea 移动窗口；AppKit 再处理同一拖曳会争抢位置。
         // 只关闭系统鼠标拖曳，程序设置位置和窗口缩放仍可用。必须在 AppKit 主线程设置。
         nsWindow.call("setMovable:", 0.toByte())
         val content = nsWindow.send("contentView") ?: return false
@@ -130,6 +157,8 @@ object Vibrancy {
         return (0 until count).mapNotNull { windows.send("objectAtIndex:", it) }
             .firstOrNull { it.send("title")?.send("UTF8String")?.getString(0, "UTF-8") == title }
     }
+
+    private fun nsString(value: String) = objcClass("NSString").send("stringWithUTF8String:", value)
 
     private fun objcClass(name: String) = process.getFunction("objc_getClass").invokePointer(arrayOf(name))
     private fun selector(name: String) = process.getFunction("sel_registerName").invokePointer(arrayOf(name))

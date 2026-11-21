@@ -13,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.input.key.*
@@ -755,7 +754,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         if (s != null) {
             // 侧边栏从窗口顶部铺下来，顶上一段留给红绿灯
             Column(Modifier.width(248.dp).fillMaxHeight().background(Palette.Rail)) {
-                if (isMac) WindowDraggableArea { Spacer(Modifier.fillMaxWidth().height(TitleBarHeight)) }
+                if (isMac) TitleBarArea { Spacer(Modifier.fillMaxWidth().height(TitleBarHeight)) }
                 Column(Modifier.padding(horizontal = 6.dp).padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     if (inConflict) {
                         WorkspaceItem(t("Resolve conflicts", "解决冲突"), Icons.Branch, view == MainView.CONFLICT, conflicted.size) { view = MainView.CONFLICT }
@@ -841,7 +840,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
         }
         Box(Modifier.weight(1f).fillMaxHeight()) {
         Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-            WindowDraggableArea {
+            TitleBarArea {
                 // 没有侧边栏时红绿灯压在工具栏上，要让开
                 val start = if (isMac && s == null) 84.dp else 18.dp
                 Toolbar(
