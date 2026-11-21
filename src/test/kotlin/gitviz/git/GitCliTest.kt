@@ -525,6 +525,29 @@ class GitCliTest {
     }
 
     @Test
+    fun `commit only includes both paths of a renamed and modified file`() {
+        prepare()
+        commit(work, "[old].txt", "one\ntwo\nthree\n")
+        git(work, "mv", "[old].txt", "[new].txt")
+        File(work, "[new].txt").appendText("four\n")
+        File(work, "a").writeText("staged elsewhere\n")
+        git(work, "add", "a")
+        val cli = GitCli(work)
+        val renamed = file("[new].txt")
+        assertEquals("[old].txt", renamed.oldPath)
+        assertTrue(renamed.hasUnstaged)
+
+        val result = cli.commitOnly("rename and edit", listOf(renamed))
+
+        assertTrue(result.ok, result.output)
+        assertEquals(setOf("a", "[new].txt"), git(work, "ls-tree", "--name-only", "HEAD").lines().toSet())
+        assertEquals("one\ntwo\nthree\nfour", git(work, "show", "HEAD:[new].txt"))
+        assertEquals("one", git(work, "show", "HEAD:a"))
+        assertEquals(listOf("a"), cli.status().map { it.path })
+        assertTrue(file("a").hasStaged)
+    }
+
+    @Test
     fun `a failed commit only leaves new files untracked`() {
         prepare()
         File(work, "new").writeText("fresh\n")

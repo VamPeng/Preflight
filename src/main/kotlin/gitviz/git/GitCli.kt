@@ -286,10 +286,15 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
     fun commitOnly(message: String, files: List<WorkingFile>): GitResult {
         require(files.isNotEmpty()) { "Nothing to commit" }
         val fresh = files.filter { it.untracked }
+        // 重命名是一个逻辑文件：新路径写入和旧路径删除必须一起提交；复制则保留源路径。
+        val paths = files.flatMap { file ->
+            val oldPath = file.oldPath?.takeIf { file.index == 'R' || file.worktree == 'R' }
+            if (oldPath == null) listOf(file) else listOf(file, file.copy(path = oldPath, oldPath = null))
+        }.distinctBy { it.path }
         return coordinator.execute(OperationRequest(OperationKind.COMMIT)) {
             val added = onPaths(listOf("add", "-N"), fresh)
             if (!added.ok) return@execute added
-            val result = onPaths(listOf("commit", "--only", "-m", message), files)
+            val result = onPaths(listOf("commit", "--only", "-m", message), paths)
             if (!result.ok) onPaths(listOf("rm", "--cached", "-q"), fresh)
             result
         }
