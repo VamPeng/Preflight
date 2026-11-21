@@ -548,6 +548,34 @@ class GitCliTest {
     }
 
     @Test
+    fun `commit only refuses a rename whose old path holds an unchecked new file`() {
+        prepare()
+        commit(work, "[old].txt", "one\n")
+        git(work, "mv", "[old].txt", "[new].txt")
+        File(work, "[new].txt").appendText("two\n")
+        File(work, "[old].txt").writeText("recreated\n")
+        val cli = GitCli(work)
+        val headBefore = head()
+        val statusBefore = git(work, "status", "--porcelain")
+
+        val refused = cli.commitOnly("rename only", listOf(file("[new].txt")))
+
+        assertFalse(refused.ok)
+        assertTrue("[old].txt" in refused.output, refused.output)
+        assertEquals(headBefore, head())
+        assertEquals(statusBefore, git(work, "status", "--porcelain"))
+        assertEquals("recreated\n", File(work, "[old].txt").readText())
+
+        // 一并勾选时就是用户的选择：新路径和原路径的新文件一起提交。
+        val both = cli.commitOnly("rename and keep", listOf(file("[new].txt"), file("[old].txt")))
+
+        assertTrue(both.ok, both.output)
+        assertEquals("one\ntwo", git(work, "show", "HEAD:[new].txt"))
+        assertEquals("recreated", git(work, "show", "HEAD:[old].txt"))
+        assertEquals(emptyList(), cli.status().map { it.path })
+    }
+
+    @Test
     fun `partial new-file registration is rolled back when add fails`() {
         prepare()
         val cli = GitCli(work)

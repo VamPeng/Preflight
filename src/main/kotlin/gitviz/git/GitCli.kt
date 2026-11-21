@@ -5,6 +5,8 @@ import gitviz.logic.*
 import gitviz.service.*
 import gitviz.ui.*
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 enum class GitFailure { REJECTED, AUTH, CONFLICT, NOT_MERGED, UNKNOWN, PAUSED, OTHER }
 
@@ -291,7 +293,14 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
             val oldPath = file.oldPath?.takeIf { file.index == 'R' || file.worktree == 'R' }
             if (oldPath == null) listOf(file) else listOf(file, file.copy(path = oldPath, oldPath = null))
         }.distinctBy { it.path }
+        val checked = files.map { it.path }.toSet()
         return coordinator.execute(OperationRequest(OperationKind.COMMIT)) {
+            // commit --only 按磁盘内容提交旧路径：那里若又有了文件，会把它当成修改提交，而不是删除。
+            // 用户没勾选它时不能替用户提交，先停下来说明。
+            val reoccupied = paths.firstOrNull { it.path !in checked && Files.exists(workTree.toPath().resolve(it.path), LinkOption.NOFOLLOW_LINKS) }
+            if (reoccupied != null) return@execute GitResult(GitFailure.OTHER, t(
+                "\"${reoccupied.path}\" was renamed, but something exists at its old path again. Check it too, or move it away, then commit.",
+                "“${reoccupied.path}”已重命名，但原路径又有了文件。请一并勾选，或先移走它再提交。"))
             // 界面的未跟踪状态可能已过期；只清理操作开始时尚未进入索引的路径。
             val indexed = if (fresh.isEmpty()) emptySet() else read("ls-files", "--cached", "-z").split('\u0000').toSet()
             val registering = fresh.filter { it.path !in indexed }
