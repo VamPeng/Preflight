@@ -97,6 +97,8 @@ internal fun ChangesView(
     focus: String? = null,
     onFocused: () -> Unit = {},
     onAi: (() -> Unit)? = null,
+    /** 合并、变基等进行中时 git 不允许只提交部分文件，不显示「只提交勾选的文件」。 */
+    allowCommitChecked: Boolean = true,
 ) {
     var selection by remember(cli) { mutableStateOf<Selection?>(null) }
     LaunchedEffect(focus) {
@@ -204,9 +206,19 @@ internal fun ChangesView(
                         },
                     )
                     HorizontalDivider()
-                    CommitBox(cli, branch, staged.size, !busy, draft, onAi, onCommit = { message, amend, done ->
-                        apply(t("Committing", "正在提交"), t("Committed", "已提交"), historyChanged = true, op = { commit(message, amend) }, done = done)
-                    })
+                    val checked = if (allowCommitChecked) unstaged.filter { it.path in unstagedGroup.checked } else emptyList()
+                    CommitBox(cli, branch, staged.size, checked.size, !busy, draft, onAi,
+                        onCommit = { message, amend, done ->
+                            apply(t("Committing", "正在提交"), t("Committed", "已提交"), historyChanged = true, op = { commit(message, amend) }, done = done)
+                        },
+                        onCommitChecked = { message, done ->
+                            val success = if (checked.size == 1) t("Committed ${checked.single().path}", "已提交 ${checked.single().path}")
+                                else t("Committed ${countOf(checked.size, "file")}", "已提交 ${checked.size} 个文件")
+                            apply(t("Committing", "正在提交"), success, historyChanged = true, op = { commitOnly(message, checked) }) {
+                                unstagedGroup.checked -= checked.map { it.path }.toSet()
+                                done()
+                            }
+                        })
                 }
                 // 拖右边缘调整宽度，松手后记住
                 WidthDragHandle(t("Drag to resize the list", "拖动调整列表宽度"), Modifier.align(Alignment.CenterEnd),
@@ -515,7 +527,10 @@ internal fun statusBadge(code: Char): Pair<String, Color> = when (code) {
 }
 
 @Composable
-private fun CommitBox(cli: GitCli, branch: String?, stagedCount: Int, enabled: Boolean, draft: CommitDraft, onAi: (() -> Unit)?, onCommit: (String, Boolean, () -> Unit) -> Unit) {
+private fun CommitBox(
+    cli: GitCli, branch: String?, stagedCount: Int, checkedCount: Int, enabled: Boolean, draft: CommitDraft, onAi: (() -> Unit)?,
+    onCommit: (String, Boolean, () -> Unit) -> Unit, onCommitChecked: (String, () -> Unit) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var message by draft::message
     var amend by draft::amend
@@ -568,5 +583,22 @@ private fun CommitBox(cli: GitCli, branch: String?, stagedCount: Int, enabled: B
                 .clickable(enabled = canCommit) { commit() }
                 .padding(vertical = 6.dp),
         )
+        // 勾选了未暂存的文件时多一个选择：绕过暂存区，直接提交这几个文件在磁盘上的样子
+        if (checkedCount > 0 && !amend) {
+            val canCommitChecked = enabled && message.isNotBlank()
+            Hint(t("Commits these files as they are on disk, without staging them. Staged changes in other files stay staged.",
+                "按磁盘上的内容直接提交这些文件，不经过暂存区；其他文件已暂存的改动留在暂存区。")) {
+                Text(
+                    t("Commit only the ${countOf(checkedCount, "checked file")}", "只提交勾选的 $checkedCount 个文件"),
+                    fontSize = TypeScale.Body, color = Palette.Ink, textAlign = TextAlign.Center, maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().alpha(if (canCommitChecked) 1f else 0.45f).clip(shape)
+                        .border(1.dp, Palette.Line, shape).hoverRow()
+                        .clickable(enabled = canCommitChecked, role = Role.Button) {
+                            onCommitChecked(message.trim()) { message = "" }
+                        }
+                        .padding(vertical = 5.dp),
+                )
+            }
+        }
     }
 }

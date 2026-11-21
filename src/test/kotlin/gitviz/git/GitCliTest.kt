@@ -504,6 +504,41 @@ class GitCliTest {
     }
 
     @Test
+    fun `commit only takes the chosen files from disk and leaves other staged changes staged`() {
+        prepare()
+        commit(work, "b", "b\n")
+        commit(work, "[id].tsx", "x\n")
+        File(work, "a").writeText("a-staged\n")
+        val cli = GitCli(work)
+        cli.stage(file("a"))
+        File(work, "b").delete()
+        File(work, "[id].tsx").writeText("x2\n")
+        File(work, "new").writeText("fresh\n")
+
+        val picked = cli.status().filter { it.path in setOf("b", "[id].tsx", "new") }
+        assertTrue(cli.commitOnly("pick", picked).ok)
+
+        assertEquals("pick", cli.lastCommitMessage())
+        assertEquals(setOf("D\tb", "M\t[id].tsx", "A\tnew"), git(work, "show", "--name-status", "--format=", "HEAD").lines().toSet())
+        assertEquals(listOf("a"), cli.status().map { it.path }, "Only the staged change to a is left")
+        assertTrue(file("a").hasStaged)
+    }
+
+    @Test
+    fun `a failed commit only leaves new files untracked`() {
+        prepare()
+        File(work, "new").writeText("fresh\n")
+        File(work, ".git/hooks/pre-commit").apply {
+            writeText("#!/bin/sh\nexit 1\n")
+            setExecutable(true)
+        }
+        val cli = GitCli(work)
+
+        assertFalse(cli.commitOnly("nope", listOf(file("new"))).ok)
+        assertTrue(file("new").untracked)
+    }
+
+    @Test
     fun `a failing commit hook is reported`() {
         prepare()
         File(work, "a").writeText("two\n")

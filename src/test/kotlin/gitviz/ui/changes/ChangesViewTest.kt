@@ -87,6 +87,29 @@ class ChangesViewTest {
     }
 
     @Test
+    fun `commit only the checked files skips the staging area`() = withRepository { repo ->
+        repo.seed()
+        repo.git("add", "--", "docs/n.md")
+        Settings.changesAsTree = false
+        val draft = CommitDraft()
+        ChangesScene(repo, draft).use { ui ->
+            ui.frame()
+            assertFalse(ui.hasMatch(Regex("Commit only .*")), "Nothing ticked, no extra button")
+            ui.click(ui.node("Select A.kt").boundsInRoot.center)
+            ui.click(ui.node("Select New.kt").boundsInRoot.center)
+            draft.message = "pick two"
+            ui.frame(); ui.frame()
+            ui.click(ui.node("Commit only the 2 checked files").boundsInRoot.center)
+            ui.frame(); ui.frame()
+            assertEquals("pick two", repo.git("log", "-1", "--format=%s"))
+            assertEquals(setOf("src/main/A.kt", "src/other/New.kt"), repo.git("show", "--name-only", "--format=", "HEAD").lines().toSet())
+            assertEquals(setOf("docs/n.md"), staged(repo), "The staged file is still staged and not committed")
+            assertEquals("", draft.message)
+            assertFalse(ui.hasMatch(Regex("Commit only .*")), "Committed files are no longer ticked")
+        }
+    }
+
+    @Test
     fun `scrolling sideways moves the names but not the checkboxes`() = withRepository { repo ->
         val long = "a-very-long-file-name-".repeat(8) + "end.kt"
         repo.write("README.md", "r\n"); repo.git("add", "--", "."); repo.git("commit", "-q", "-m", "base")
@@ -122,7 +145,7 @@ class ChangesViewTest {
         }
     }
 
-    private class ChangesScene(private val repo: RepositoryFixture) : AutoCloseable {
+    private class ChangesScene(private val repo: RepositoryFixture, private val draft: CommitDraft = CommitDraft()) : AutoCloseable {
         private val width = 900
         private val height = 700
         private val owners = mutableListOf<SemanticsOwner>()
@@ -149,7 +172,7 @@ class ChangesViewTest {
                     Surface(Modifier.fillMaxSize(), color = Palette.Ground, contentColor = Palette.Ink) {
                         ChangesView(
                             repo.cli, files, "main", onChanged = { files = repo.cli.status() },
-                            onRun = { _, _, op, done -> done(repo.cli.op().ok) }, modifier = Modifier.fillMaxSize(),
+                            onRun = { _, _, op, done -> done(repo.cli.op().ok) }, modifier = Modifier.fillMaxSize(), draft = draft,
                         )
                     }
                 }

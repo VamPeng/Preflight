@@ -981,6 +981,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         externalRevision = workingReloads,
                         draft = commitDraft,
+                        allowCommitChecked = !inConflict,
                         onAi = if (FeatureVisibility.visible("ai")) ({ view = MainView.AI }) else null,
                         focus = changesFocus,
                         onFocused = { changesFocus = null },

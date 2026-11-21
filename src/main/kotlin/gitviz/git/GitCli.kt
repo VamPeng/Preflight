@@ -279,6 +279,22 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
     fun commit(message: String, amend: Boolean): GitResult =
         if (amend) run("commit", "--amend", "-m", message) else run("commit", "-m", message)
 
+    /**
+     * 只提交这几个文件在工作区里的样子，不经过暂存区（`git commit --only`）；别的文件已暂存的改动原样留在暂存区。
+     * 新文件 git 还不认识，先 `add -N` 登记；提交失败再把登记撤掉，文件回到未跟踪。
+     */
+    fun commitOnly(message: String, files: List<WorkingFile>): GitResult {
+        require(files.isNotEmpty()) { "Nothing to commit" }
+        val fresh = files.filter { it.untracked }
+        return coordinator.execute(OperationRequest(OperationKind.COMMIT)) {
+            val added = onPaths(listOf("add", "-N"), fresh)
+            if (!added.ok) return@execute added
+            val result = onPaths(listOf("commit", "--only", "-m", message), files)
+            if (!result.ok) onPaths(listOf("rm", "--cached", "-q"), fresh)
+            result
+        }
+    }
+
     fun lastCommitMessage(): String = capture("log", "-1", "--format=%B").orEmpty()
 
     fun createBranch(name: String, commitId: String): GitResult = run("branch", "--", name, commitId)
