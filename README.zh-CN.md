@@ -102,7 +102,7 @@
 
 ## 安装
 
-可从 [Preflight 官网](https://git.vambda.com/) 下载 macOS Apple 芯片安装包。安装包采用 ad-hoc 签名，尚未经过 Apple 公证。如需从源码构建，请先装好：
+可从 [Preflight 官网](https://git.vambda.com/) 下载 macOS Apple 芯片／Intel 或 Windows x64 安装包。Mac 包采用 ad-hoc 签名，尚未经过 Apple 公证；Windows 包未签名。如需从源码构建，请先装好：
 
 - JDK 17–21（Android Studio 自带的 JBR 21 就可以）
 - Git（建议 2.38 及以上，操作前的冲突预判会用到）
@@ -119,7 +119,11 @@ cd gitviz
 ./gradlew packageDistributionForCurrentOS
 ```
 
+官网发布使用 `scripts/package-site.sh` 打包，再运行 `site/deploy/upload.sh` 上传。Intel 包使用 x64 JDK 和 Rosetta 构建：`JAVA_HOME=/path/to/x64-jdk ./gradlew -Dorg.gradle.java.home=/path/to/x64-jdk --project-cache-dir build/intel-gradle --no-daemon packageDmg`，产物隔离在 `build/intel/`，站点脚本自动包含同版本的 Intel DMG，也可用 `PREFLIGHT_MAC_X64_INSTALLER` 指定。Windows 版本不同时设置 `PREFLIGHT_WINDOWS_VERSION`。官网列出两个 Mac 芯片入口，浏览器无法识别时由用户选择。
+
 ## 上手
+
+正式版启动后在后台检查一次 `https://git.vambda.com/release.json`；当前系统和架构有新版时显示可关闭的提示，点击后打开官网下载页。检查 8 秒超时，失败静默跳过；开发版不检查，也不会自动下载安装。此前发布的安装包需要先手动安装包含此功能的新版。
 
 1. 点「打开仓库」选择本地的 Git 仓库，或者克隆一个新仓库
 2. 在提交列表里单击提交查看详情，在左侧侧边栏点分支跳到对应位置
@@ -151,7 +155,7 @@ Preflight 还在积极开发中，日常的查看、提交、分支和同步操�
 
 暂时的限制：
 
-- 还没有发布安装包，Windows 和 Linux 也还没有经过验证
+- 当前 Mac 环境未验证 Windows 安装与运行；Linux 尚未验证
 - AI 生成提交说明、Reflog 视图已经实现，但暂时隐藏入口，打磨后再开放
 - 交互式 rebase 只能编辑当前分支上的一段线性提交
 - Git LFS 文件只显示指针信息

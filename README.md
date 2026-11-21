@@ -102,7 +102,7 @@
 
 ## Installation
 
-Download the macOS Apple silicon installer from [the Preflight website](https://git.vambda.com/). The installer uses ad-hoc signing and is not notarized by Apple. To build from source, you will need:
+Download the macOS Apple silicon / Intel or Windows x64 installer from [the Preflight website](https://git.vambda.com/). The Mac installer uses ad-hoc signing and is not notarized by Apple; the Windows installer is unsigned. To build from source, you will need:
 
 - JDK 17–21 (the JBR 21 bundled with Android Studio works)
 - Git (2.38 or later recommended; used to predict conflicts before an operation)
@@ -119,9 +119,11 @@ You can also build an installer (a `.dmg` on macOS). The output goes to `build/c
 ./gradlew packageDistributionForCurrentOS
 ```
 
-The product website (`https://git.vambda.com`) lives in `site/introduction/`. `scripts/package-site.sh` builds the release DMG and packs it with the page into `build/site/` (local only). `site/deploy/upload.sh` publishes that bundle to the server and is a remote change.
+The product website (`https://git.vambda.com`) lives in `site/introduction/`. `scripts/package-site.sh` builds the release DMG and packs it with the page into `build/site/` (local only). `site/deploy/upload.sh` publishes that bundle to the server and is a remote change. Supply a Windows x64 installer with `PREFLIGHT_WINDOWS_INSTALLER=/path/to/Preflight-<version>.exe`, or keep it at `build/installers/Preflight-<version>-windows-x64.exe` for subsequent builds. If the Windows build has a different version, also set `PREFLIGHT_WINDOWS_VERSION`. Build the Intel DMG with an x64 JDK under Rosetta: `JAVA_HOME=/path/to/x64-jdk ./gradlew -Dorg.gradle.java.home=/path/to/x64-jdk --project-cache-dir build/intel-gradle --no-daemon packageDmg`. Intel outputs are isolated in `build/intel/`; the site packager includes that version’s DMG automatically, or accepts `PREFLIGHT_MAC_X64_INSTALLER`. The website lists both chips and asks users to choose when the browser cannot identify the architecture. Published download filenames cannot be reused for different content. `scripts/release_manifest.py` generates `public/release.json` from verified installer files: schema 1, product name, and a `releases` list containing platform, architecture, version, download URL and SHA-256. The site serves it with revalidation on every request.
 
 ## Getting started
+
+Packaged releases check `https://git.vambda.com/release.json` once after startup. When a newer version is available for your platform, a dismissible notice opens the website's download page. Checks run in the background with an eight-second timeout; failures stay silent. Development builds do not check, and the app does not download or install updates automatically. Previously published installers need to be replaced with a build containing this feature first.
 
 1. Click **Open repository** to choose a local Git repository, or clone a new one
 2. Click a commit in the list to see its details; click a branch in the sidebar to jump to it
@@ -153,7 +155,7 @@ Preflight is under active development. Everyday viewing, committing, branching a
 
 Current limitations:
 
-- No prebuilt release yet, and Windows and Linux have not been verified
+- Windows installation and runtime behavior have not been verified on this Mac; Linux has not been verified
 - AI-generated commit messages and the Reflog view are implemented but hidden for now, until they are polished
 - Interactive rebase only edits a linear range of commits on the current branch
 - Git LFS files show pointer information only

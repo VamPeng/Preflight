@@ -11,6 +11,11 @@ repositories {
     google()
 }
 
+// Intel JDK 在 Rosetta 下构建时隔离中间产物，避免混入 Apple 芯片运行库。
+if (System.getProperty("os.name").startsWith("Mac") && System.getProperty("os.arch") in setOf("x86_64", "amd64")) {
+    layout.buildDirectory.set(layout.projectDirectory.dir("build/intel"))
+}
+
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
@@ -41,7 +46,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             modules("java.instrument", "java.management", "java.net.http", "java.security.jgss", "java.sql", "jdk.unsupported")
             packageName = if (devDistribution) "Preflight Dev" else "Preflight"
-            packageVersion = "1.0.0" // DMG 要求主版本号大于 0
+            packageVersion = "1.0.1" // DMG 要求主版本号大于 0
             // 构建产物不参与 Spotlight 搜索，只展示 /Applications 中安装的两个版本。
             outputBaseDir.set(layout.buildDirectory.dir(
                 if (devDistribution) "compose/packages.noindex/dev" else "compose/packages.noindex/release"
@@ -66,5 +71,21 @@ tasks.withType<JavaExec>().matching { it.name == "run" || it.name == "runRelease
         jvmArgumentProviders.add(org.gradle.process.CommandLineArgumentProvider {
             listOf("-Xdock:name=Preflight Dev", "-Xdock:icon=$devIcon")
         })
+    }
+}
+
+// Intel jpackage 不会像 Apple 芯片版本一样自动附加 ad-hoc 签名。
+// 在 DMG 打包之前签名，并保留 Compose/JVM 需要的执行权限。
+if (System.getProperty("os.name").startsWith("Mac") && System.getProperty("os.arch") in setOf("x86_64", "amd64")) {
+    tasks.matching { it.name == "createDistributable" }.configureEach {
+        doLast {
+            val appName = if (devDistribution) "Preflight Dev" else "Preflight"
+            val flavor = if (devDistribution) "dev" else "release"
+            providers.exec {
+                commandLine("codesign", "--force", "--deep", "--sign", "-", "--options", "runtime",
+                    "--entitlements", layout.buildDirectory.file("compose/default-resources/1.8.2/default-entitlements.plist").get().asFile,
+                    layout.buildDirectory.dir("compose/packages.noindex/$flavor/main/app/$appName.app").get().asFile)
+            }.result.get().assertNormalExitValue()
+        }
     }
 }

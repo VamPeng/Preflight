@@ -62,6 +62,8 @@ open "/Applications/Preflight Dev.app"
 | | `ChangeTree.kt` | 改动文件按文件夹分层、合并中间层、收起，以及勾选状态 |
 | | `Readme.kt`、`Markdown.kt` | 读取预览用的文本文件、找工作区的 README；轻量 Markdown 解析 |
 | `service/` | `ServiceHttp.kt` | 有超时、大小限制和取消的 HTTP 请求 |
+| | `Updates.kt` | 正式版启动一次的后台更新检查；按平台比较官网清单与 jpackage 本地版本，不上传仓库信息、不自动下载安装 |
+| `ui/` | `UpdateBanner.kt` | 可关闭的新版提示；Git 操作反馈优先显示 |
 | | `Ai.kt` | 受限改动快照、模型协议 |
 | `platform/` | `Vibrancy.kt`、`WindowSize.kt` | macOS 毛玻璃窗口、窗口尺寸保存与恢复 |
 | | `WorkTreeWatcher.kt`、`DirectoryChooser.kt`、`FileManager.kt` | 工作区文件监听、系统目录选择框、在 Finder 中显示 |

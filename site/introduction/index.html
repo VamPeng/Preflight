@@ -3,13 +3,13 @@
   Preflight 介绍页（git.vambda.com）。只引用同站的 style.css、app.js 和 img/，无外部请求，
   也不含内联样式和脚本，以符合站点的 Content-Security-Policy。
   <html> 上的两个属性：
-    data-dl-mac / data-dl-windows / data-dl-linux
+    data-dl-mac / data-dl-mac-x64 / data-dl-windows / data-dl-linux
                    各系统的安装包地址。app.js 按访问者的系统选择；该系统留空时按钮显示「即将上线」且不可点击，
                    识别不出系统（如手机）时按钮跳到下载区，那里列出全部可用安装包。
     data-version   页面上显示的版本号。
   发版时由 scripts/package-site.sh 按 build.gradle.kts 的版本填写，不手动改。
 -->
-<html lang="en" data-dl-mac="" data-dl-windows="" data-dl-linux="" data-version="">
+<html lang="en" data-dl-mac="" data-dl-mac-x64="" data-dl-windows="" data-dl-linux="" data-version="" data-version-windows="">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

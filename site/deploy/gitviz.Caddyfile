@@ -15,6 +15,9 @@ git.vambda.com {
 	# 页面、样式、脚本每次向源站确认，发布后立即可见；截图短期缓存。
 	@pages path / /index.html /style.css /app.js
 	header @pages Cache-Control "no-cache"
+	# 更新清单每次重新验证，客户端不会长期使用已过期版本信息。
+	@release path /release.json
+	header @release Cache-Control "no-cache, max-age=0, must-revalidate"
 	@media path /img/*
 	header @media Cache-Control "public, max-age=3600"
 	# 安装包文件名带版本号，内容不再变化。

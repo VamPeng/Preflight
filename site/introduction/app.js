@@ -6,10 +6,10 @@
   };
 
   /* ---- download: 按访问者的系统选安装包，地址在 <html data-dl-mac/-windows/-linux> ---- */
-  var OS_NAMES = { mac: 'macOS', windows: 'Windows', linux: 'Linux' };
+  var OS_NAMES = { mac: 'macOS', mac_x64: 'macOS', windows: 'Windows', linux: 'Linux' };
   var urls = {};
   Object.keys(OS_NAMES).forEach(function (os) {
-    var u = (root.getAttribute('data-dl-' + os) || '').trim();
+    var u = (root.getAttribute('data-dl-' + os.replace('_', '-')) || '').trim();
     if (u) urls[os] = u;
   });
   function detectOS() {
@@ -34,8 +34,10 @@
     el.setAttribute('data-en', en);
     el.setAttribute('data-zh', zh);
   }
-  function renderDownloads(os, unsupportedArch) {
-    var url = os && !unsupportedArch ? urls[os] : null;
+  function renderDownloads(os, architecture) {
+    var key = os === 'mac' ? (architecture === 'arm64' ? 'mac' : architecture === 'x64' ? 'mac_x64' : null) : os;
+    var url = key ? urls[key] : null;
+    var chooseMac = os === 'mac' && !architecture && (urls.mac || urls.mac_x64);
     var name = os ? OS_NAMES[os] : '';
     var any = Object.keys(urls).length > 0;
     Array.prototype.forEach.call(document.querySelectorAll('[data-dl]'), function (a) {
@@ -45,10 +47,13 @@
         a.setAttribute('href', url);
         if (short) setText(a, 'Download', '下载');
         else setText(a, 'Download for ' + name, '下载 ' + name + ' 版');
+      } else if (chooseMac) {
+        a.setAttribute('href', '#get');
+        setText(a, 'Choose Mac version', '选择 Mac 版本');
       } else if (os || !any) {
         a.removeAttribute('href');
         a.setAttribute('aria-disabled', 'true');
-        var what = unsupportedArch ? name + ' (Intel)' : name;
+        var what = os === 'mac' && architecture === 'x64' ? name + ' (Intel)' : name;
         if (short || !os) setText(a, 'Coming soon', '即将上线');
         else setText(a, 'Coming soon for ' + what, what + ' 版即将上线');
       } else {
@@ -71,8 +76,8 @@
     }
   }
   var visitorOS = detectOS();
-  renderDownloads(visitorOS, false);
-  var version = root.getAttribute('data-version') || '';
+  renderDownloads(visitorOS, null);
+  var version = root.getAttribute(visitorOS === 'windows' ? 'data-version-windows' : 'data-version') || '';
   function fillVersion() {
     Array.prototype.forEach.call(document.querySelectorAll('.ver'), function (el) { el.textContent = version; });
   }
@@ -114,14 +119,13 @@
     b.addEventListener('click', function () { setLang(b.getAttribute('data-lang'), true); });
   });
 
-  var macArch = urls.mac && archOf(urls.mac);
   var uad = navigator.userAgentData;
-  if (visitorOS === 'mac' && macArch && macArch.arm && uad && uad.getHighEntropyValues) {
+  // Safari 的 Intel 字样不能判断芯片；只信任 Client Hints，否则保留手动选择。
+  if (visitorOS === 'mac' && uad && uad.getHighEntropyValues) {
     uad.getHighEntropyValues(['architecture']).then(function (v) {
-      if (v.architecture === 'x86') {
-        renderDownloads('mac', true);
-        setLang(root.getAttribute('lang') === 'zh-Hans' ? 'zh' : 'en', false);
-      }
+      var arch = v.architecture === 'arm' ? 'arm64' : v.architecture === 'x86' ? 'x64' : null;
+      renderDownloads('mac', arch);
+      setLang(root.getAttribute('lang') === 'zh-Hans' ? 'zh' : 'en', false);
     }, function () {});
   }
 

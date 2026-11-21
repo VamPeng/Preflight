@@ -17,6 +17,14 @@ grep -Fxq 'import /etc/personal-blog/sites/*.Caddyfile' "$CFG"
 [[ ! -e $RELEASE && ! -e $BACKUP ]]
 [[ ! -e $BASE/current || -L $BASE/current ]]
 (cd "$STAGE/gitviz-site" && sha256sum --quiet -c SHA256SUMS.txt)
+# 下载地址长期缓存，已发布的同名文件必须保持原内容。
+for download in "$STAGE/gitviz-site/public/downloads/"*; do
+  previous="$BASE/current/public/downloads/$(basename "$download")"
+  if [[ -f $previous ]] && ! cmp -s "$download" "$previous"; then
+    echo "Refusing to replace a published download: $(basename "$download")" >&2
+    exit 1
+  fi
+done
 
 install -d -m 0755 "$BASE" "$BASE/releases"
 install -d -m 0700 "$BACKUP"

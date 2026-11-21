@@ -25,12 +25,15 @@ COPYFILE_DISABLE=1 tar --no-xattrs -C "$BUNDLE" -cf - gitviz-site deploy | \
   "$CONNECT" "sudo -n bash -c 'set -eu; test \"\$(hostname)\" = ip-172-26-15-41; mkdir -m 755 \"$STAGE\"; tar -xf - -C \"$STAGE\"; bash \"$STAGE/deploy/install.sh\" \"$RELEASE_ID\" \"$STAGE\"; rm -rf \"$STAGE\"'"
 
 echo "Checking the public site …"
-DL="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["download"])' "$SITE/release.json")"
-for path in / /style.css /app.js "$DL"; do
+for path in / /style.css /app.js /release.json; do
   code="$(curl -sS -o /dev/null -I -w '%{http_code}' "https://git.vambda.com$path")"
   echo "$code $path"; [[ $code == 200 ]]
 done
-remote="$(curl -sS "https://git.vambda.com$DL" | shasum -a 256 | cut -d' ' -f1)"
-local_sum="$(cut -d' ' -f1 "$SITE/public$DL.sha256")"
-[[ $remote == "$local_sum" ]] || { echo "Downloaded installer checksum mismatch" >&2; exit 1; }
+curl --fail -sS https://git.vambda.com/release.json | cmp - "$SITE/public/release.json"
+while IFS= read -r download; do
+  remote="$(curl --fail -sS "https://git.vambda.com$download" | shasum -a 256 | cut -d' ' -f1)"
+  local_sum="$(cut -d' ' -f1 "$SITE/public$download.sha256")"
+  [[ $remote == "$local_sum" ]] || { echo "Downloaded installer checksum mismatch: $download" >&2; exit 1; }
+  echo "Verified $download"
+done < <(python3 -I -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["downloads"].values()))' "$SITE/release.json")
 echo "Preflight site published: $RELEASE_ID"

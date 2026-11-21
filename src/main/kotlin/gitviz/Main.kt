@@ -105,8 +105,7 @@ private val MaxSidebarWidth = 440.dp
 
 /** 开发安装包显式标记 dev；Gradle 和 IDE 直接运行时没有 jpackage 版本号，也视为开发版。 */
 private object AppIcon {
-    private val isDev = System.getProperty("preflight.dev")?.toBoolean()
-        ?: (System.getProperty("jpackage.app-version") == null)
+    private val isDev = AppRelease.isDevelopment
     val name = if (isDev) "Preflight Dev" else "Preflight"
 
     fun load(): java.awt.image.BufferedImage? =
@@ -178,6 +177,12 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
     var previewContent by remember { mutableStateOf<PreviewContent?>(null) }
     var query by remember { mutableStateOf("") }
     var net by remember { mutableStateOf<NetStatus?>(null) }
+    val update by AppRelease.updates.available.collectAsState()
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    LaunchedEffect(Unit) {
+        withFrameNanos { } // 首帧之后才检查，不阻塞仓库打开和界面绘制。
+        AppRelease.updates.check()
+    }
     var operationBusy by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf(MainView.HISTORY) }
     var stashes by remember { mutableStateOf(emptyList<StashEntry>()) }
@@ -1056,6 +1061,14 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             }
         }
         // 操作反馈浮在右下角，不再占一整行把列表顶下去
+        if (net == null && !loading) update?.let {
+            UpdateBanner(it, onDownload = {
+                runCatching { uriHandler.openUri(DOWNLOAD_PAGE) }.onFailure {
+                    net = NetStatus(t("Couldn't open browser", "无法打开浏览器"), DOWNLOAD_PAGE, NetState.WARNING)
+                }
+            }, onDismiss = AppRelease.updates::dismiss,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 40.dp))
+        }
         net?.let {
             NetBanner(it, onAction = { op -> runNet(op) }, onDismiss = { if (net === it) net = null }, onCancel = runningOperation::cancel,
                 modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(end = 16.dp, bottom = 40.dp))
