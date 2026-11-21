@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,8 +24,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -80,12 +86,55 @@ internal fun SelectionBreak(text: String, modifier: Modifier = Modifier) {
     Text(text, fontSize = 1.sp, lineHeight = 1.sp, color = Color.Transparent, modifier = modifier.height(0.dp))
 }
 
+private const val TAB_COLUMNS = 4
+
+/** 量字符宽度时重复这么多次再平均，抵消排版结果取整到像素的误差。 */
+private const val TAB_SAMPLE = 64
+
+private val CodeTextStyle = TextStyle(fontFamily = CodeFont, fontSize = 12.5.sp, lineHeight = 19.sp, letterSpacing = 0.sp)
+
+/**
+ * Compose 把 Tab 画成一个字符宽，Makefile 缩进和 TSV 列都挤在一起。显示时给每个 Tab 加字距，
+ * 补到下一个四列 Tab stop；文字本身不变，选中复制出来仍是 Tab。只用于等宽文字。
+ */
+internal fun alignTabs(text: String, style: TextStyle, measurer: TextMeasurer, density: Density): AnnotatedString {
+    if ('\t' !in text) return AnnotatedString(text)
+    val fixed = style.copy(letterSpacing = 0.sp)
+    fun advance(c: Char) = measurer.measure(c.toString().repeat(TAB_SAMPLE), fixed).size.width / TAB_SAMPLE.toFloat()
+    val column = advance('0')
+    val tab = advance('\t')
+    return buildAnnotatedString {
+        append(text)
+        var col = 0
+        text.forEachIndexed { i, c ->
+            when {
+                c == '\n' -> col = 0
+                c == '\t' -> {
+                    val span = TAB_COLUMNS - col % TAB_COLUMNS
+                    addStyle(SpanStyle(letterSpacing = with(density) { (span * column - tab).toSp() }), i, i + 1)
+                    col += span
+                }
+                !c.isLowSurrogate() -> col++
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeText(text: String, softWrap: Boolean = true) {
+    val style = LocalTextStyle.current.merge(CodeTextStyle)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val shown = remember(text, style, measurer, density) { alignTabs(text, style, measurer, density) }
+    Text(shown, style = style, softWrap = softWrap)
+}
+
 @Composable
 private fun PlainText(text: String) {
     val chunks = remember(text) { text.lines().chunked(PLAIN_LINES_PER_CHUNK).map { it.joinToString("\n") } }
     chunks.forEachIndexed { index, chunk ->
         Box {
-            Text(chunk, fontFamily = CodeFont, fontSize = 12.5.sp, lineHeight = 19.sp)
+            CodeText(chunk)
             if (index < chunks.lastIndex) SelectionBreak("\n", Modifier.align(Alignment.BottomStart))
         }
     }
@@ -117,7 +166,7 @@ private fun MarkdownBlock(block: MdBlock) {
             val shape = RoundedCornerShape(6.dp)
             Box(Modifier.fillMaxWidth().clip(shape).background(Palette.Panel).border(1.dp, Palette.Line, shape)
                 .horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp)) {
-                Text(block.text, fontFamily = CodeFont, fontSize = 12.5.sp, lineHeight = 19.sp, softWrap = false)
+                CodeText(block.text, softWrap = false)
             }
         }
         is MdBlock.Quote -> Row(Modifier.height(IntrinsicSize.Min)) {
