@@ -66,22 +66,22 @@ def main() -> None:
         tmp = Path(t)
         pngs = {}
         for size in SIZES:
-            name = f"gitviz-{variant}-small.svg" if size <= 64 else f"gitviz-{variant}.svg"
+            name = f"preflight-{variant}-small.svg" if size <= 64 else f"preflight-{variant}.svg"
             pngs[size] = tmp / f"{size}.png"
             render(SRC / name, size, pngs[size], tmp)
 
-        iconset = tmp / "GitViz.iconset"
+        iconset = tmp / "Preflight.iconset"
         iconset.mkdir()
         for size in (16, 32, 128, 256, 512):
             shutil.copy(pngs[size], iconset / f"icon_{size}x{size}.png")
             shutil.copy(pngs[size * 2], iconset / f"icon_{size}x{size}@2x.png")
-        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(OUT / "GitViz.icns")], check=True)
+        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(OUT / "Preflight.icns")], check=True)
 
-        write_ico(pngs, OUT / "GitViz.ico")
-        shutil.copy(pngs[512], OUT / "GitViz.png")
+        write_ico(pngs, OUT / "Preflight.ico")
+        shutil.copy(pngs[512], OUT / "Preflight.png")
         shutil.copy(pngs[256], RESOURCES / "icon.png")
 
-    print(f"已导出 {variant} 版：{OUT.relative_to(ROOT)}/GitViz.{{icns,ico,png}}，{RESOURCES.relative_to(ROOT)}/icon.png")
+    print(f"已导出 {variant} 版：{OUT.relative_to(ROOT)}/Preflight.{{icns,ico,png}}，{RESOURCES.relative_to(ROOT)}/icon.png")
 
 
 if __name__ == "__main__":

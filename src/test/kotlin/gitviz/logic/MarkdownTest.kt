@@ -118,20 +118,20 @@ class MarkdownTest {
     }
 
     @Test fun `html blocks keep only text`() {
-        val blocks = parseMarkdown("<!-- hidden\nstill hidden -->\n<p align=\"center\">\n  <img src=\"logo.png\" alt=\"GitViz &amp; co\">\n  <br>\n  <b>Fast</b> viewer\n</p>\n\nText &copy; 2026 a&b")
+        val blocks = parseMarkdown("<!-- hidden\nstill hidden -->\n<p align=\"center\">\n  <img src=\"logo.png\" alt=\"Preflight &amp; co\">\n  <br>\n  <b>Fast</b> viewer\n</p>\n\nText &copy; 2026 a&b")
         assertEquals(2, blocks.size)
         val html = paragraph(blocks[0])
-        assertEquals("GitViz & co", html.first { it.image }.text)
-        assertEquals("GitViz & co\nFast viewer", text(html))
+        assertEquals("Preflight & co", html.first { it.image }.text)
+        assertEquals("Preflight & co\nFast viewer", text(html))
         assertEquals("Text © 2026 a&b", text(paragraph(blocks[1])))
     }
 
     @Test fun `inline html keeps styles, links and cell breaks`() {
         val blocks = parseMarkdown(
-            "<h1 align=\"center\">GitViz</h1>\n\n<p><b>Bold</b> and <a href=\"https://x.dev\"><code>code</code></a> <i>it</b></i></p>\n\n" +
+            "<h1 align=\"center\">Preflight</h1>\n\n<p><b>Bold</b> and <a href=\"https://x.dev\"><code>code</code></a> <i>it</b></i></p>\n\n" +
                 "<table>\n  <tr>\n    <td>\n      <h3>One</h3>\n      first\n    </td>\n    <td>second</td>\n  </tr>\n</table>"
         )
-        assertEquals("GitViz", text(assertIs<MdBlock.Heading>(blocks[0]).text))
+        assertEquals("Preflight", text(assertIs<MdBlock.Heading>(blocks[0]).text))
         assertEquals(1, (blocks[0] as MdBlock.Heading).level)
         val inline = paragraph(blocks[1])
         assertEquals("Bold and code it", text(inline))

@@ -1,6 +1,6 @@
 # gitviz：静态产品（介绍页与 Mac 安装包）。按 vamyu 托管契约：
 # 发布目录 /opt/gitviz/releases/<发布号>/，current 链接原子切换；本文件装到 /etc/personal-blog/sites/gitviz.Caddyfile。
-gitviz.vambda.com {
+git.vambda.com {
 	encode zstd gzip
 	root * /opt/gitviz/current/public
 	@hidden path_regexp hidden (^|/)\.
@@ -23,4 +23,9 @@ gitviz.vambda.com {
 	@dmg path *.dmg
 	header @dmg Content-Type application/x-apple-diskimage
 	file_server
+}
+
+# 兼容已发布的官网和下载链接，保留路径与查询参数。
+gitviz.vambda.com {
+	redir https://git.vambda.com{uri} 308
 }

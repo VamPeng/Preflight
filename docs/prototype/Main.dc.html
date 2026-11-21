@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>GitViz 主窗口</title>
+<title>Preflight 主窗口</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -751,7 +751,7 @@ class Component extends DCLogic {
     const leaf = (name, depth, id, o) => ({
       name, pad: (10 + 14 * depth) + 'px', chev: '', dot: o.branch === s.current ? SIGNAL : 'transparent',
       fg: o.branch === s.current ? 'var(--accent-ink)' : INK, weight: o.branch === s.current ? 600 : 400, sync: o.sync || '',
-      tip: o.branch ? '双击切换到这个分支' : '',
+      tip: o.branch ? (s.renamed[o.branch] || o.branch) : (o.remote || ''),
       menu: (e) => { const at = ctxAt(e); if (o.branch) set({ ctx: Object.assign(at, { branch: o.branch }) }); },
       dbl: () => { if (o.branch && o.branch !== s.current) flash('已切换到 ' + o.branch, { current: o.branch, sel: id, fileIdx: 0 }); },
       bg: id && s.sel === id ? RAISED : 'transparent', bar: id && s.sel === id ? 'inset 2px 0 0 ' + SIGNAL : 'none',
@@ -773,7 +773,7 @@ class Component extends DCLogic {
     );
     const secDef = [
       ['branch', '本地分支', 'M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9', branchRows.filter((i) => !i.chev).length, branchRows],
-      ['remote', '远程', 'M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z', 1, [folder('origin', 0), leaf('main', 1, '39a636e', {})]],
+      ['remote', '远程', 'M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z', 1, [folder('origin', 0), leaf('main', 1, '39a636e', { remote: 'origin/main' })]],
       ['tag', '标签', 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z M7 7h.01', 1 + s.extraTags.length, [leaf('v0.1.0', 0, '6bd1a8b', {}), ...s.extraTags.map((t) => leaf(t.name, 0, t.id, {}))]],
     ];
     // 原「仓库工具」页取消：工作树和子模块收进引用树。只有一个工作树、没有配置子模块时，这两个分组都不出现

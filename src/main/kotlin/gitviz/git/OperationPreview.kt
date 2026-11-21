@@ -62,7 +62,7 @@ internal fun GitCli.planOperation(requested: OperationIntent): OperationPlan {
     val intent = requested.copy(target = target)
     val parentCount = read("rev-list", "--parents", "-n", "1", target).trim().split(' ').size - 1
     require(parentCount <= 1 || intent.mainline in 1..parentCount) { t("Choose a valid mainline parent", "请选择有效的主父提交") }
-    // The branch the operation acts on: the dragged-to branch when GitViz switches first, otherwise HEAD.
+    // The branch the operation acts on: the dragged-to branch when Preflight switches first, otherwise HEAD.
     val ours = read("rev-parse", "--verify", "--end-of-options", (intent.switchBranch?.let { "refs/heads/$it" } ?: "HEAD") + "^{commit}").trim()
     fun count(range: String) = read("rev-list", "--count", range).trim().toInt()
     fun plan(facts: List<PlanFact>, commits: Int, conflicts: List<String>? = null, discarded: List<String> = emptyList()) =

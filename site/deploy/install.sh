@@ -57,7 +57,7 @@ rollback() {
   fi
   sudo -u personal-blog /usr/local/bin/caddy-blog validate --config "$CFG" --adapter caddyfile
   systemctl kill --kill-who=main --signal=USR1 personal-blog.service
-  echo "GitViz site deployment rolled back; retained release: $RELEASE" >&2
+  echo "Preflight site deployment rolled back; retained release: $RELEASE" >&2
   exit "$status"
 }
 trap rollback ERR
@@ -68,11 +68,11 @@ sudo -u personal-blog /usr/local/bin/caddy-blog validate --config "$CFG" --adapt
 systemctl kill --kill-who=main --signal=USR1 personal-blog.service
 # 首次上线时 Caddy 需要申请证书，最多等 60 秒。
 for attempt in {1..120}; do
-  if curl --silent --fail --resolve gitviz.vambda.com:443:127.0.0.1 https://gitviz.vambda.com/ -o "$BACKUP/http-check.html" \
+  if curl --silent --fail --resolve git.vambda.com:443:127.0.0.1 https://git.vambda.com/ -o "$BACKUP/http-check.html" \
      && cmp -s "$BACKUP/http-check.html" "$RELEASE/public/index.html"; then break; fi
   [[ $attempt != 120 ]]
   sleep 0.5
 done
 systemctl is-active --quiet personal-blog.service
 trap - ERR
-printf 'GitViz site release: %s\nRollback state: %s\n' "$RELEASE" "$BACKUP"
+printf 'Preflight site release: %s\nRollback state: %s\n' "$RELEASE" "$BACKUP"

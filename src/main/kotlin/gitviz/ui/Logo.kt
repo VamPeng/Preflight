@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.dp
 private val LogoAmber = Color(0xFFFFB000)
 
 /**
- * GitViz 的图形标志：两条线从左上的提交分开，在右下的琥珀色提交合并。
- * 和 design/icon/gitviz-*.svg 是同一套坐标（100 × 100 的图标格子），这里去掉底板，只画图形，
+ * Preflight 的图形标志：两条线从左上的提交分开，在右下的琥珀色提交合并。
+ * 和 design/icon/preflight-*.svg 是同一套坐标（100 × 100 的图标格子），这里去掉底板，只画图形，
  * 线和普通节点用 [Palette.Ink]，所以浅色、深色主题都能看清。
  */
 @Composable

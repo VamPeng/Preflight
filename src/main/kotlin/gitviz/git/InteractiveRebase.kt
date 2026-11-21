@@ -87,14 +87,14 @@ internal fun GitCli.checkInteractivePlan(plan: InteractiveRebasePlan) {
 
 internal fun GitCli.runInteractiveCommands(plan: InteractiveRebasePlan, teach: Boolean = false): GitExecution {
     val todo = plan.todo()
-    val temporary = Files.createTempDirectory("gitviz-sequence-")
+    val temporary = Files.createTempDirectory("preflight-sequence-")
     try {
         val todoFile = temporary.resolve("todo")
         val editor = temporary.resolve("editor.sh")
         fun quote(text: String) = "'" + text.replace("'", "'\"'\"'") + "'"
         Files.writeString(todoFile, todo)
         Files.writeString(editor, "#!/bin/sh\nset -eu\ncat " + quote(todoFile.toString()) + " > \"\$1\"\n")
-        if (teach) Teaching.note("GitViz supplies the reviewed todo; message edits are encoded data in fixed amend steps. Native Git resumes this plan after conflicts or restart.", "GitViz 提供已预览的编辑列表；说明文字编码为固定修改步骤的数据。冲突或重启后由原生 Git 继续这个计划。")
+        if (teach) Teaching.note("Preflight supplies the reviewed todo; message edits are encoded data in fixed amend steps. Native Git resumes this plan after conflicts or restart.", "Preflight 提供已预览的编辑列表；说明文字编码为固定修改步骤的数据。冲突或重启后由原生 Git 继续这个计划。")
         val result = raw(listOf("-c", "core.editor=true", "rebase") + interactiveRebaseFlags + plan.base,
             environment = mapOf("GIT_SEQUENCE_EDITOR" to ("sh " + quote(editor.toString()))), teach = teach)
         return readableRebaseExecution(result)
@@ -103,6 +103,6 @@ internal fun GitCli.runInteractiveCommands(plan: InteractiveRebasePlan, teach: B
 
 internal fun readableRebaseExecution(result: GitExecution): GitExecution {
     val command = Regex(Regex.escape("printf '%b' '") + "(?:\\\\0[0-7]{3})+" + Regex.escape("' | git -c core.editor=true commit --amend --allow-empty --cleanup=verbatim -F -"))
-    fun readable(bytes: ByteArray) = command.replace(bytes.decodeToString(), t("[GitViz: apply reviewed commit message]", "[GitViz：应用已预览的提交说明]")).toByteArray()
+    fun readable(bytes: ByteArray) = command.replace(bytes.decodeToString(), t("[Preflight: apply reviewed commit message]", "[Preflight：应用已预览的提交说明]")).toByteArray()
     return result.copy(stdout = readable(result.stdout), stderr = readable(result.stderr))
 }

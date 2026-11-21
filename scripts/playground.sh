@@ -2,15 +2,15 @@
 # 生成调试写操作用的练习仓库，弄坏了重新跑一次就恢复。
 # origin 是本地的裸仓库，推送不会碰到 GitHub。
 #
-#   ./scripts/playground.sh                  生成到 /tmp/gitviz-playground
+#   ./scripts/playground.sh                  生成到 /tmp/preflight-playground
 #   ./scripts/playground.sh /some/empty/dir  生成到指定目录
-#   ./gradlew run --args="/tmp/gitviz-playground"
+#   ./gradlew run --args="/tmp/preflight-playground"
 set -euo pipefail
 
-WORK="${1:-/tmp/gitviz-playground}"
+WORK="${1:-/tmp/preflight-playground}"
 ORIGIN="$WORK-origin.git"
 UPSTREAM="$WORK-upstream"
-MARKER=".git/gitviz-playground"
+MARKER=".git/preflight-playground"
 
 # 只删自己生成过的目录，防止传错路径把别的东西删了
 if [ -f "$WORK/$MARKER" ]; then

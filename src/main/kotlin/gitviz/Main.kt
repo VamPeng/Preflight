@@ -105,9 +105,9 @@ private val MaxSidebarWidth = 440.dp
 
 /** 开发安装包显式标记 dev；Gradle 和 IDE 直接运行时没有 jpackage 版本号，也视为开发版。 */
 private object AppIcon {
-    private val isDev = System.getProperty("gitviz.dev")?.toBoolean()
+    private val isDev = System.getProperty("preflight.dev")?.toBoolean()
         ?: (System.getProperty("jpackage.app-version") == null)
-    val name = if (isDev) "GitViz Dev" else "GitViz"
+    val name = if (isDev) "Preflight Dev" else "Preflight"
 
     fun load(): java.awt.image.BufferedImage? =
         AppIcon::class.java.getResourceAsStream(if (isDev) "/icon-dev.png" else "/icon.png")
@@ -431,7 +431,7 @@ fun FrameWindowScope.App(initialDir: File, reportInitialError: Boolean, onExit: 
             watcher?.close()
         }
     }
-    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    val windowFocused = rememberWindowFocused(window)
     LaunchedEffect(cli, windowFocused, watching) {
         if (!windowFocused || cli == null) return@LaunchedEffect
         if (watching != true) {

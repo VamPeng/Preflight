@@ -103,6 +103,18 @@ object Vibrancy {
         return done.await()
     }
 
+    /** 透明窗口的 AWT 焦点事件可能缺失，直接读取 AppKit 的应用激活状态。 */
+    suspend fun isApplicationActive(): Boolean {
+        val done = CompletableDeferred<Boolean>()
+        if (!onMainThread {
+            done.complete(runCatching {
+                val app = objcClass("NSApplication").send("sharedApplication")
+                msgSend.invokeInt(arrayOf(app, selector("isActive"))) and 0xff != 0
+            }.getOrDefault(false))
+        }) done.complete(false)
+        return done.await()
+    }
+
     /**
      * 双击标题栏：按系统设置“连按窗口标题栏以…”缩放或最小化，默认缩放（铺满／还原）。
      * 内容铺满了标题栏，系统收不到这次双击，只能由 Compose 转过来。

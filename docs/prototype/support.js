@@ -1,5 +1,5 @@
 /*
- * GitViz 原型运行时。让 *.dc.html 直接在浏览器里打开（file:// 也行）。
+ * Preflight 原型运行时。让 *.dc.html 直接在浏览器里打开（file:// 也行）。
  *
  * 支持的写法（就是原型里用到的那些）：
  *   <x-dc>…模板…</x-dc>                    模板根；<helmet> 里的 <style> 会挪进 <head>

@@ -43,7 +43,7 @@ internal object ServiceHttp {
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).followRedirects(HttpClient.Redirect.NEVER).build()
     fun request(uri: URI, headers: Map<String, String> = emptyMap(), body: String? = null, timeoutSeconds: Long = 45): ServiceReply {
         serviceUri(uri.toString().substringBefore('?'))
-        val builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds)).header("Accept", "application/json").header("User-Agent", "GitViz")
+        val builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds)).header("Accept", "application/json").header("User-Agent", "Preflight")
         try { headers.forEach { (key, value) -> builder.header(key, value) } }
         catch (_: IllegalArgumentException) {
             // HttpClient's validation error can include the entire Authorization value.

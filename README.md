@@ -4,12 +4,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="design/icon/gitviz-dark.svg">
-    <img src="design/icon/gitviz-light.svg" width="112" alt="GitViz icon">
+    <source media="(prefers-color-scheme: dark)" srcset="design/icon/preflight-dark.svg">
+    <img src="design/icon/preflight-light.svg" width="112" alt="Preflight icon">
   </picture>
 </p>
 
-<h1 align="center">GitViz</h1>
+<h1 align="center">Preflight</h1>
 
 <p align="center">
   <b>A Git desktop client that shows your branches clearly and lets you act with confidence</b><br>
@@ -36,11 +36,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/introduction/img/main-dark.png">
-    <img src="site/introduction/img/main-light.png" width="900" alt="GitViz main window: branch graph, commit history and commit details">
+    <img src="site/introduction/img/main-light.png" width="900" alt="Preflight main window: branch graph, commit history and commit details">
   </picture>
 </p>
 
-## Why GitViz
+## Why Preflight
 
 <table>
   <tr>
@@ -50,7 +50,7 @@
     </td>
     <td width="33%" valign="top">
       <h3>🛡️ Know the outcome first</h3>
-      Before a merge, rebase, cherry-pick or reset, GitViz tells you how many commits are involved, whether it can fast-forward, and which files may conflict.
+      Before a merge, rebase, cherry-pick or reset, Preflight tells you how many commits are involved, whether it can fast-forward, and which files may conflict.
     </td>
     <td width="33%" valign="top">
       <h3>📖 Learn as you go</h3>
@@ -102,7 +102,7 @@
 
 ## Installation
 
-There is no prebuilt release yet, so you need to build from source. GitViz targets macOS first. You will need:
+Download the macOS Apple silicon installer from [the Preflight website](https://git.vambda.com/). The installer uses ad-hoc signing and is not notarized by Apple. To build from source, you will need:
 
 - JDK 17–21 (the JBR 21 bundled with Android Studio works)
 - Git (2.38 or later recommended; used to predict conflicts before an operation)
@@ -119,7 +119,7 @@ You can also build an installer (a `.dmg` on macOS). The output goes to `build/c
 ./gradlew packageDistributionForCurrentOS
 ```
 
-The product website (`https://gitviz.vambda.com`) lives in `site/introduction/`. `scripts/package-site.sh` builds the release DMG and packs it with the page into `build/site/` (local only). `site/deploy/upload.sh` publishes that bundle to the server and is a remote change.
+The product website (`https://git.vambda.com`) lives in `site/introduction/`. `scripts/package-site.sh` builds the release DMG and packs it with the page into `build/site/` (local only). `site/deploy/upload.sh` publishes that bundle to the server and is a remote change.
 
 ## Getting started
 
@@ -142,14 +142,14 @@ Common shortcuts (use Ctrl instead of ⌘ on Windows / Linux):
 
 ## Security and privacy
 
-- **Passwords never pass through GitViz**: when authentication is needed, git and ssh show the macOS system dialog and reuse your existing SSH keys and Keychain; the app neither reads nor stores passwords
+- **Passwords never pass through Preflight**: when authentication is needed, git and ssh show the macOS system dialog and reuse your existing SSH keys and Keychain; the app neither reads nor stores passwords
 - **Uses your system git**: every write operation runs the git installed on your machine, so behavior matches the command line
-- **Guarded operations**: write operations on the same repository run one at a time, even across multiple GitViz windows; discarding changes, hard resets and force pushes ask for confirmation first
-- **Mistakes are recoverable**: GitViz does not make extra backups; commits can be recovered from Git's reflog
+- **Guarded operations**: write operations on the same repository run one at a time, even across multiple Preflight windows; discarding changes, hard resets and force pushes ask for confirmation first
+- **Mistakes are recoverable**: Preflight does not make extra backups; commits can be recovered from Git's reflog
 
 ## Project status
 
-GitViz is under active development. Everyday viewing, committing, branching and syncing already work. See the [roadmap](docs/ROADMAP.md) for the status of each feature and the [plan](docs/PLAN.md) for open work (both in Chinese).
+Preflight is under active development. Everyday viewing, committing, branching and syncing already work. See the [roadmap](docs/ROADMAP.md) for the status of each feature and the [plan](docs/PLAN.md) for open work (both in Chinese).
 
 Current limitations:
 

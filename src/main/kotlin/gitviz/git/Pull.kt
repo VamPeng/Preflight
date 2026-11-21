@@ -22,7 +22,7 @@ internal fun GitCli.pullOptions(): PullOptions {
         refs.filter { !it.endsWith("/HEAD") }.flatMap { ref -> specs.filter { it.destination != null && it.matchDestination(ref) }
             .mapNotNull { it.expandFromDestination(ref).source?.takeIf { source -> source.startsWith("refs/heads/") }?.removePrefix("refs/heads/") } }.distinct().sorted()
     }
-    val strategy = runCatching { PullStrategy.valueOf(config("gitviz.pullstrategy").orEmpty()) }.getOrDefault(PullStrategy.MERGE)
+    val strategy = runCatching { PullStrategy.valueOf((config("preflight.pullstrategy") ?: config("gitviz.pullstrategy")).orEmpty()) }.getOrDefault(PullStrategy.MERGE)
     return PullOptions(strategy, remotes + listOfNotNull(remote?.takeIf { it == "." }), current, remote, branch, branches, headIdentity().also { check(it.startsWith("ref: refs/heads/$current|")) { "Current branch changed" } })
 }
 
@@ -47,7 +47,7 @@ internal fun GitCli.preparePull(settings: PullSettings): PreparedPull {
         check(sourceHead == headIdentity()) { "Fetch completed, but current branch changed; integration was not started" }
         val oid = read("rev-parse", "--verify", "--end-of-options", "$tracking^{commit}").trim()
         // Remember the chosen strategy and upstream as part of the fetch step.
-        raw(listOf("config", "--local", "gitviz.pullstrategy", settings.strategy.name), teach = true).requireSuccess()
+        raw(listOf("config", "--local", "preflight.pullstrategy", settings.strategy.name), teach = true).requireSuccess()
         if (settings.setUpstream) {
             if (settings.remote != "." && mapped == null) raw(listOf("config", "--local", "--add", "remote.${settings.remote}.fetch", "+$source:$tracking"), teach = true).requireSuccess()
             raw(listOf("config", "--local", "branch.$current.remote", settings.remote), teach = true).requireSuccess()

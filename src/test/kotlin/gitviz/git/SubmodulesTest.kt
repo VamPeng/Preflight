@@ -33,7 +33,7 @@ class SubmodulesTest {
             directory.resolve("ignored").delete()
             val updated = parent.cli.updateSubmodule(parent.cli.submodules().single())
             assertTrue(updated.ok, updated.output)
-            assertTrue(child.read("for-each-ref", "refs/gitviz/submodule-before").isNotBlank())
+            assertTrue(child.read("for-each-ref", "refs/preflight/submodule-before").isNotBlank())
             assertTrue(parent.cli.status().isEmpty())
         }
     }

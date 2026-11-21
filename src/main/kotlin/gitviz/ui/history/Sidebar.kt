@@ -138,13 +138,18 @@ fun RefSidebar(
                             val key = sectionKey + row.node.path
                             FolderRow(row, !filtering && key in collapsed, onClick = { toggle(key) })
                         } else {
-                            RefLeafRow(
+                            val content: @Composable () -> Unit = {
+                                RefLeafRow(
                                     row, ref, ref.label.identity == focusedRef, branchColors.index(ref.label),
                                     detail = if (ref.label.kind == RefKind.BRANCH) sync[ref.label.name]?.let { branchDetail(it, nowSeconds) } else null,
                                     onHover = onHover, onClick = { focusedRef = ref.label.identity; focus.requestFocus(); onSelect(ref) },
                                     onOpen = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchOpen(ref) },
                                     onMenu = { if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) onBranchMenu(ref) },
                                 )
+                            }
+                            if (ref.label.kind == RefKind.BRANCH || ref.label.kind == RefKind.REMOTE) {
+                                Hint(ref.label.name, Modifier.fillMaxWidth(), content)
+                            } else content()
                         }
                     }
                 }

@@ -43,6 +43,23 @@ class GitRepoTest {
     private fun load(limit: Int = GitRepo.PAGE_SIZE) = GitRepo.open(dir).use { it.loadCommits(limit) }
 
     @Test
+    fun `renamed app respects the legacy repository write lock`() {
+        val head = commit("one", "a").name
+        val cli = GitCli(dir)
+        java.nio.channels.FileChannel.open(
+            cli.commonDirectory.resolve("gitviz-operation.lock").toPath(),
+            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE,
+        ).use { channel ->
+            channel.lock().use {
+                assertFalse(cli.createBranch("blocked-by-old-app", head).ok)
+                assertEquals(null, git.repository.findRef("refs/heads/blocked-by-old-app"))
+            }
+        }
+        assertTrue(cli.createBranch("blocked-by-old-app", head).ok)
+        assertEquals(head, git.repository.findRef("refs/heads/blocked-by-old-app").objectId.name)
+    }
+
+    @Test
     fun `refs snapshot changes when a branch is created elsewhere`() {
         commit("one", "a")
         GitRepo.open(dir).use { repo ->
@@ -54,6 +71,29 @@ class GitRepoTest {
             assertTrue(created != before)
             git.checkout().setName("feature").call()
             assertTrue(repo.refsSnapshot() != created)
+        }
+    }
+
+    @Test
+    fun `external CLI branch creation and checkout at the same commit change the live snapshot`() = RepositoryFixture().use { r ->
+        val head = r.commit()
+        GitRepo.open(r.root).use { repo ->
+            val original = repo.refsSnapshot()
+            r.git("branch", "external-created")
+            val created = repo.refsSnapshot()
+            assertTrue(created != original)
+            assertTrue(created.contains("refs/heads/external-created $head"))
+            assertTrue(created.startsWith("refs/heads/main\n"))
+
+            r.git("switch", "-c", "external-switched")
+            val switched = repo.refsSnapshot()
+            assertEquals(head, r.git("rev-parse", "HEAD"))
+            assertTrue(switched != created)
+            assertTrue(switched.startsWith("refs/heads/external-switched\n"))
+
+            r.git("switch", "main")
+            r.git("branch", "-d", "external-created", "external-switched")
+            assertEquals(original, repo.refsSnapshot())
         }
     }
 

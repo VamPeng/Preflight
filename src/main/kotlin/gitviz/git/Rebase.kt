@@ -45,7 +45,7 @@ internal fun GitCli.rebaseResult(execution: GitExecution): GitResult {
         result.copy(failure = GitFailure.PAUSED) else result
 }
 
-/** Stable for one native operation, including after a GitViz restart. Never join an unrelated later session. */
+/** Stable for one native operation, including after a Preflight restart. Never join an unrelated later session. */
 internal fun GitCli.operationIdentity(): String? {
     val operation = currentOperation() ?: return null
     val control = when (operation) {

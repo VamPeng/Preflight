@@ -4,12 +4,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="design/icon/gitviz-dark.svg">
-    <img src="design/icon/gitviz-light.svg" width="112" alt="GitViz 图标">
+    <source media="(prefers-color-scheme: dark)" srcset="design/icon/preflight-dark.svg">
+    <img src="design/icon/preflight-light.svg" width="112" alt="Preflight 图标">
   </picture>
 </p>
 
-<h1 align="center">GitViz</h1>
+<h1 align="center">Preflight</h1>
 
 <p align="center">
   <b>看得清分支，也敢放心操作的 Git 桌面客户端</b><br>
@@ -36,11 +36,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/introduction/img/main-dark.png">
-    <img src="site/introduction/img/main-light.png" width="900" alt="GitViz 主界面：分支图、提交历史和提交详情">
+    <img src="site/introduction/img/main-light.png" width="900" alt="Preflight 主界面：分支图、提交历史和提交详情">
   </picture>
 </p>
 
-## 为什么是 GitViz
+## 为什么是 Preflight
 
 <table>
   <tr>
@@ -102,7 +102,7 @@
 
 ## 安装
 
-目前还没有发布安装包，需要从源码构建。GitViz 以 macOS 为主要平台，需要先装好：
+可从 [Preflight 官网](https://git.vambda.com/) 下载 macOS Apple 芯片安装包。安装包采用 ad-hoc 签名，尚未经过 Apple 公证。如需从源码构建，请先装好：
 
 - JDK 17–21（Android Studio 自带的 JBR 21 就可以）
 - Git（建议 2.38 及以上，操作前的冲突预判会用到）
@@ -140,14 +140,14 @@ cd gitviz
 
 ## 安全与隐私
 
-- **密码不经过 GitViz**：需要认证时由 git 和 ssh 弹出 macOS 系统对话框，沿用你已有的 SSH 密钥和钥匙串，应用不读取也不保存密码
+- **密码不经过 Preflight**：需要认证时由 git 和 ssh 弹出 macOS 系统对话框，沿用你已有的 SSH 密钥和钥匙串，应用不读取也不保存密码
 - **使用系统自带的 git**：所有写操作都调用你电脑上的 git，行为和命令行一致
-- **操作有保护**：同一仓库的写操作按顺序执行，多开 GitViz 也不会同时写入；丢弃改动、硬重置、强制推送前都会确认
-- **误操作可以找回**：GitViz 不额外备份，提交可以通过 Git 的 reflog 找回
+- **操作有保护**：同一仓库的写操作按顺序执行，多开 Preflight 也不会同时写入；丢弃改动、硬重置、强制推送前都会确认
+- **误操作可以找回**：Preflight 不额外备份，提交可以通过 Git 的 reflog 找回
 
 ## 当前状态
 
-GitViz 还在积极开发中，日常的查看、提交、分支和同步操作都已可用。每项功能的进度见[功能路线](docs/ROADMAP.md)，待办事项见 [PLAN](docs/PLAN.md)。
+Preflight 还在积极开发中，日常的查看、提交、分支和同步操作都已可用。每项功能的进度见[功能路线](docs/ROADMAP.md)，待办事项见 [PLAN](docs/PLAN.md)。
 
 暂时的限制：
 

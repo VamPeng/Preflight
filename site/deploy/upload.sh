@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 打包并发布 gitviz.vambda.com（远程变更，每次运行都需要当次授权）。
+# 打包并发布 git.vambda.com（远程变更，每次运行都需要当次授权）。
 # 在持有 Lightsail SSH 私钥的 Mac 上运行，经 vamyu 的严格 SSH 入口连接；
 # 服务器端由 install.sh 原子切换发布并在失败时回退。
-# 首次上线前 Cloudflare 需要有 gitviz.vambda.com 的 A 记录（54.249.231.98，Proxied）。
+# 首次上线前 Cloudflare 需要有 git.vambda.com 的 A 记录（54.249.231.98，Proxied）。
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONNECT="${VAM_CONNECT_SSH:-$ROOT/../vamyu/scripts/connect-ssh.sh}"
@@ -27,10 +27,10 @@ COPYFILE_DISABLE=1 tar --no-xattrs -C "$BUNDLE" -cf - gitviz-site deploy | \
 echo "Checking the public site …"
 DL="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["download"])' "$SITE/release.json")"
 for path in / /style.css /app.js "$DL"; do
-  code="$(curl -sS -o /dev/null -I -w '%{http_code}' "https://gitviz.vambda.com$path")"
+  code="$(curl -sS -o /dev/null -I -w '%{http_code}' "https://git.vambda.com$path")"
   echo "$code $path"; [[ $code == 200 ]]
 done
-remote="$(curl -sS "https://gitviz.vambda.com$DL" | shasum -a 256 | cut -d' ' -f1)"
+remote="$(curl -sS "https://git.vambda.com$DL" | shasum -a 256 | cut -d' ' -f1)"
 local_sum="$(cut -d' ' -f1 "$SITE/public$DL.sha256")"
 [[ $remote == "$local_sum" ]] || { echo "Downloaded installer checksum mismatch" >&2; exit 1; }
-echo "GitViz site published: $RELEASE_ID"
+echo "Preflight site published: $RELEASE_ID"

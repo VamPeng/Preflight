@@ -79,8 +79,8 @@
 
   /* ---- language: English default, 中文 optional ---- */
   var ZH = {
-    title: 'GitViz — 产品介绍',
-    desc: 'GitViz 是一款免费的 Git 客户端。用清晰的分支图呈现历史，合并、变基、重置在真正改动仓库之前先给你预览。'
+    title: 'Preflight — 产品介绍',
+    desc: 'Preflight 是一款免费的 Git 客户端。用清晰的分支图呈现历史，合并、变基、重置在真正改动仓库之前先给你预览。'
   };
   var titleEn = document.title;
   var descEl = document.getElementById('meta-desc');

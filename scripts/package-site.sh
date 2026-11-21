@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 打包 gitviz.vambda.com 介绍页：构建正式版 DMG，和 site/introduction 一起放进发布目录并压缩。
+# 打包 git.vambda.com 介绍页：构建正式版 DMG，和 site/introduction 一起放进发布目录并压缩。
 # 只在本地运行，不连接服务器。上传见 site/deploy/upload.sh。
 #
 # 产物（build/site/）：
@@ -13,13 +13,13 @@ VERSION="$(sed -n 's/^ *packageVersion = "\([0-9.]*\)".*/\1/p' build.gradle.kts 
 [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "build.gradle.kts 里找不到 packageVersion" >&2; exit 1; }
 
 ./gradlew packageDmg --console=plain -q
-DMG="build/compose/packages.noindex/release/main/dmg/GitViz-$VERSION.dmg"
+DMG="build/compose/packages.noindex/release/main/dmg/Preflight-$VERSION.dmg"
 [[ -f $DMG ]] || { echo "缺少 $DMG" >&2; exit 1; }
 hdiutil verify "$DMG" >/dev/null
 
 ARCH="$(uname -m)"
 [[ $ARCH == arm64 ]] || { echo "当前只发布 Apple 芯片版本，请在 arm64 Mac 上打包" >&2; exit 1; }
-DL_NAME="GitViz-$VERSION-macos-arm64.dmg"
+DL_NAME="Preflight-$VERSION-macos-arm64.dmg"
 
 OUT="$ROOT/build/site"
 SITE="$OUT/gitviz-site"
@@ -59,10 +59,10 @@ def files():
     return [p for p in sorted(site.rglob('*')) if p.is_file() and p.name not in ('release.json', 'SHA256SUMS.txt')]
 digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 release = {
-    'product': 'GitViz',
+    'product': 'Preflight',
     'prepared_at': datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds'),
     'deployed': False,
-    'site_url': 'https://gitviz.vambda.com/',
+    'site_url': 'https://git.vambda.com/',
     'mac_version': version,
     'mac_architecture': 'arm64',
     'mac_signing': 'ad-hoc',

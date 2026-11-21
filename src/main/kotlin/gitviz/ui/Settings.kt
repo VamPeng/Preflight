@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.prefs.Preferences
 
 private const val MAX_RECENT = 8
 private const val PathSeparator = "\n"
@@ -38,7 +37,7 @@ internal fun countOf(n: Int, one: String, many: String = one + "s"): String = "$
 
 /** 保存在系统偏好设置里的用户选项。 */
 internal object Settings {
-    private val prefs = Preferences.userRoot().node("gitviz")
+    private val prefs = AppPreferences.node
 
     val windowSize = WindowSizeStore(prefs)
 

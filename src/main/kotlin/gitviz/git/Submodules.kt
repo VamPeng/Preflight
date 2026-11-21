@@ -52,7 +52,7 @@ internal fun GitCli.updateSubmodule(reviewed: SubmoduleInfo): GitResult = coordi
         var saved: String? = null
         if (item.head != null) {
             check(child.treeStatus().isEmpty()) { t("Preserve modified, untracked and ignored files in the submodule first", "请先保留子模块中的改动、未跟踪及被忽略文件") }
-            saved = "refs/gitviz/submodule-before/${UUID.randomUUID()}"
+            saved = "refs/preflight/submodule-before/${UUID.randomUUID()}"
             child.raw(listOf("update-ref", saved, item.head, "0".repeat(item.head.length))).requireSuccess()
         }
         val result = raw(listOf("-c", "submodule.recurse=false", "submodule", "update", "--init", "--checkout", "--", item.path),

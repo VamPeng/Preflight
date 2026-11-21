@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 class WindowSizeTest {
     private fun withStore(test: (Preferences, WindowSizeStore) -> Unit) {
-        val prefs = Preferences.userRoot().node("gitviz-tests/window-size-${UUID.randomUUID()}")
+        val prefs = Preferences.userRoot().node("preflight-tests/window-size-${UUID.randomUUID()}")
         try {
             test(prefs, WindowSizeStore(prefs))
         } finally {

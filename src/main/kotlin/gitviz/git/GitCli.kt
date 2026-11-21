@@ -461,10 +461,10 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
         ownDirectory.resolve(SWITCH_ORIGIN).writeText("$head\n$identity")
     }
     private fun switchOrigin(): String? {
-        val lines = ownDirectory.resolve(SWITCH_ORIGIN).takeIf { it.isFile }?.readText()?.split('\n', limit = 2) ?: return null
+        val lines = (ownDirectory.resolve(SWITCH_ORIGIN).takeIf { it.isFile } ?: ownDirectory.resolve(LEGACY_SWITCH_ORIGIN).takeIf { it.isFile })?.readText()?.split('\n', limit = 2) ?: return null
         return lines[0].takeIf { lines.getOrNull(1) == operationIdentity() }
     }
-    internal fun clearSwitchOrigin() { ownDirectory.resolve(SWITCH_ORIGIN).delete() }
+    internal fun clearSwitchOrigin() { ownDirectory.resolve(SWITCH_ORIGIN).delete(); ownDirectory.resolve(LEGACY_SWITCH_ORIGIN).delete() }
 
     private fun abortNativeOperation(): GitResult = when (currentOperation()) {
         GitOperation.REBASE -> rebaseStep("--abort")
@@ -488,12 +488,12 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
 
     /** 写入解决后的内容，并标记这个文件已解决。 */
     fun resolveFile(path: String, content: String, expectedSignature: String? = null): GitResult = coordinator.execute(OperationRequest(OperationKind.FILE)) {
-        Teaching.note("GitViz saves the edited conflict content, then stages the file.", "GitViz 保存编辑后的冲突内容，再暂存文件。")
+        Teaching.note("Preflight saves the edited conflict content, then stages the file.", "Preflight 保存编辑后的冲突内容，再暂存文件。")
         if (expectedSignature != null) check(conflictSources(path).let { it.signature == expectedSignature && it.stages.isNotEmpty() }) { t("Conflict inputs changed. Reload before saving.", "冲突输入已改变，请重新加载后保存。") }
         val destination = safeWorkingPath(path)
         check(!java.nio.file.Files.isSymbolicLink(destination)) { "Cannot text-edit a symbolic link" }
         java.nio.file.Files.createDirectories(destination.parent)
-        val temporary = java.nio.file.Files.createTempFile(destination.parent, ".gitviz-resolution-", ".tmp")
+        val temporary = java.nio.file.Files.createTempFile(destination.parent, ".preflight-resolution-", ".tmp")
         try {
             java.nio.file.Files.writeString(temporary, content)
             if (java.nio.file.Files.exists(destination)) runCatching { java.nio.file.Files.setPosixFilePermissions(temporary, java.nio.file.Files.getPosixFilePermissions(destination)) }
@@ -517,7 +517,7 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
         coordinator.execute(OperationRequest(OperationKind.FILE)) {
             paths.forEach { safeWorkingPath(it) }
             val name = if (target == IgnoreTarget.GITIGNORE) ".gitignore" else ".git/info/exclude"
-            Teaching.note("GitViz appends escaped rules to $name; no Git command performs this file edit.", "GitViz 向 $name 追加转义后的规则；这个文件编辑不对应单条 Git 命令。")
+            Teaching.note("Preflight appends escaped rules to $name; no Git command performs this file edit.", "Preflight 向 $name 追加转义后的规则；这个文件编辑不对应单条 Git 命令。")
             appendIgnoreRules(ignoreFile(target), paths, directory)
             if (stopTracking) run("rm", "-r", "--cached", "-q", "--", *paths.map(::literal).toTypedArray()) else GitResult(null, "")
         }
@@ -578,7 +578,8 @@ class GitCli(val workTree: File, private val isolated: Boolean = false) {
         const val NETWORK_TIMEOUT_SECONDS = 600L
         const val CLEAN_BATCH = 200
         const val TEACH_PATHS = 20
-        const val SWITCH_ORIGIN = "gitviz-switch-origin"
+        const val SWITCH_ORIGIN = "preflight-switch-origin"
+        const val LEGACY_SWITCH_ORIGIN = "gitviz-switch-origin" // 改名前写下的，读到就用，清除时一起删
         const val EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904" // git 里空目录的固定哈希
     }
 }
@@ -589,7 +590,7 @@ internal fun repoNameFromUrl(url: String): String =
 
 /**
  * git 和 ssh 要密码时调用的小脚本，由它弹出 macOS 系统对话框。
- * 密码由系统对话框直接交给 git，不经过 GitViz，所以应用既看不到也存不了。
+ * 密码由系统对话框直接交给 git，不经过 Preflight，所以应用既看不到也存不了。
  * 其他系统没有这个脚本，要密码时直接失败并提示。
  */
 internal object Askpass {
@@ -599,20 +600,20 @@ on run argv
     set promptText to item 1 of argv
     activate
     if promptText contains "yes/no" then
-        display dialog promptText buttons {"$cancel", "$trust"} default button "$cancel" cancel button "$cancel" with title "GitViz" with icon caution
+        display dialog promptText buttons {"$cancel", "$trust"} default button "$cancel" cancel button "$cancel" with title "Preflight" with icon caution
         return "yes"
     end if
     if promptText contains "assword" or promptText contains "assphrase" or promptText contains "PIN" then
-        return text returned of (display dialog promptText default answer "" with hidden answer with title "GitViz")
+        return text returned of (display dialog promptText default answer "" with hidden answer with title "Preflight")
     end if
-    return text returned of (display dialog promptText default answer "" with title "GitViz")
+    return text returned of (display dialog promptText default answer "" with title "Preflight")
 end run
 APPLESCRIPT
 """
 
     private val path: String? by lazy {
         if (!isMac) return@lazy null
-        val file = File.createTempFile("gitviz-askpass", ".sh")
+        val file = File.createTempFile("preflight-askpass", ".sh")
         file.writeText(script(t("Cancel", "取消"), t("Trust", "信任")))
         file.setReadable(false, false)
         file.setWritable(false, false)

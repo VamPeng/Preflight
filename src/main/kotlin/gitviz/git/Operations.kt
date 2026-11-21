@@ -35,7 +35,7 @@ internal data class OperationRequest(val kind: OperationKind, val arguments: Lis
     }
 }
 
-/** Serializes writes per repository (shared by linked worktrees) and across GitViz processes. No snapshots are taken. */
+/** Serializes writes per repository (shared by linked worktrees) and across Preflight processes. No snapshots are taken. */
 internal class OperationCoordinator(private val cli: GitCli) {
     fun execute(request: OperationRequest, action: () -> GitResult): GitResult {
         val key = if (request.kind == OperationKind.CLONE) cli.workTree.canonicalPath else cli.commonDirectory.canonicalPath
@@ -47,8 +47,9 @@ internal class OperationCoordinator(private val cli: GitCli) {
     private fun withLease(key: String, kind: OperationKind, action: () -> GitResult): GitResult {
         if (kind == OperationKind.CLONE || key in leases.get()) return action()
         return attemptGitOperation {
+            // 沿用旧版锁文件，确保改名前后的应用同时打开仓库时仍互斥。
             java.nio.channels.FileChannel.open(cli.commonDirectory.resolve("gitviz-operation.lock").toPath(), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE).use { channel ->
-                val lease = channel.tryLock() ?: return@attemptGitOperation GitResult(GitFailure.OTHER, t("Another GitViz process is changing this repository", "另一个 GitViz 进程正在修改此仓库"))
+                val lease = channel.tryLock() ?: return@attemptGitOperation GitResult(GitFailure.OTHER, t("Another Preflight process is changing this repository", "另一个 Preflight 进程正在修改此仓库"))
                 lease.use {
                     leases.get().add(key)
                     try { action() } finally { leases.get().remove(key) }

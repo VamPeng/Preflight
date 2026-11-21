@@ -26,7 +26,7 @@ internal fun Welcome(loading: Boolean, recent: List<String>, onRecent: (String) 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         GitVizMark(size = 40.dp)
-                        Text("GitViz", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Preflight", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Text(t("Choose a local git repository to see its branches and commits.", "选择一个本地 git 仓库，查看它的分支和提交。"), fontSize = TypeScale.Body, color = Palette.Muted)
                 }

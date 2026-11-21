@@ -5,4 +5,4 @@ pluginManagement {
         mavenCentral()
     }
 }
-rootProject.name = "gitviz"
+rootProject.name = "preflight"

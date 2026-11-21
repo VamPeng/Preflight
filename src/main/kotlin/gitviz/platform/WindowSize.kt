@@ -64,7 +64,7 @@ internal fun initialWindowSize(): WindowSize {
 /** 由窗口事件线程调用；尺寸停止变化 1000ms 后才尝试写入，关闭时不补存或等待。 */
 internal class WindowSizeSaver(private val save: (WindowSize) -> Unit) : AutoCloseable {
     private val writer = ScheduledThreadPoolExecutor(1) { task ->
-        Thread(task, "gitviz-window-size").apply { isDaemon = true }
+        Thread(task, "preflight-window-size").apply { isDaemon = true }
     }.apply { removeOnCancelPolicy = true }
     private var pending: java.util.concurrent.ScheduledFuture<*>? = null
     private var closed = false

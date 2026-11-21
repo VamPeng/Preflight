@@ -1,6 +1,6 @@
 # 开发与代码结构
 
-面向想要构建、调试或修改 GitViz 的开发者。使用介绍见 [README](../README.zh-CN.md)，功能进度见 [功能路线](ROADMAP.md)。
+面向想要构建、调试或修改 Preflight 的开发者。使用介绍见 [README](../README.zh-CN.md)，功能进度见 [功能路线](ROADMAP.md)。
 
 ## 开发环境
 
@@ -13,15 +13,15 @@
 ./gradlew test                             # 无窗口测试，包括离屏截图
 ```
 
-macOS 日常界面调试使用下面的 Dev 安装流程，统一从 `/Applications/GitViz Dev.app` 启动。不要直接打开构建目录中的副本或额外启动 Java 界面进程。
+macOS 日常界面调试使用下面的 Dev 安装流程，统一从 `/Applications/Preflight Dev.app` 启动。不要直接打开构建目录中的副本或额外启动 Java 界面进程。
 
-开发运行和开发安装包使用蓝色 `DEV` 图标，窗口名为 `GitViz Dev`；正式安装版使用原来的米白琥珀色图标和 `GitViz` 名称。图标文件位于 `design/icon/`、`packaging/icons/` 和 `src/main/resources/`。
+开发运行和开发安装包使用蓝色 `DEV` 图标，窗口名为 `Preflight Dev`；正式安装版使用原来的米白琥珀色图标和 `Preflight` 名称。图标文件位于 `design/icon/`、`packaging/icons/` 和 `src/main/resources/`。
 
-调试写操作用练习仓库，不要用 gitviz 本身。脚本会生成带分支、合并冲突、储藏和未提交改动的仓库，`origin` 是本地裸仓库，推送不会碰到 GitHub，弄坏了重新跑一次就恢复：
+调试写操作用练习仓库，不要用本仓库。脚本会生成带分支、合并冲突、储藏和未提交改动的仓库，`origin` 是本地裸仓库，推送不会碰到 GitHub，弄坏了重新跑一次就恢复：
 
 ```bash
 ./scripts/playground.sh
-open "/Applications/GitViz Dev.app" --args "/tmp/gitviz-playground"
+open "/Applications/Preflight Dev.app" --args "/tmp/preflight-playground"
 ```
 
 启动参数仅在 Dev 尚未运行时生效；已有窗口可通过「打开仓库」选择练习仓库。
@@ -32,8 +32,8 @@ macOS 安装独立开发版（可以和正式版同时运行；复制前先正�
 
 ```bash
 ./gradlew createDistributable -Pdev=true
-ditto "build/compose/packages.noindex/dev/main/app/GitViz Dev.app" "/Applications/GitViz Dev.app"
-open "/Applications/GitViz Dev.app"
+ditto "build/compose/packages.noindex/dev/main/app/Preflight Dev.app" "/Applications/Preflight Dev.app"
+open "/Applications/Preflight Dev.app"
 ```
 
 打包产物统一放在 `build/compose/packages.noindex/`，避免 Spotlight 把构建副本也列成应用入口；日常只使用“应用程序”里的正式版和开发版。
@@ -94,7 +94,7 @@ AI 提交草稿和 Reflog 暂时隐藏日常入口，保留实现，待打磨后
 
 待办与验证缺口见 [PLAN.md](PLAN.md)。交互式 rebase 只编辑当前本地分支的线性区间，最多 500 条，基准提交本身不参与编辑。
 
-工作树和子模块只在手动操作时写入。工作树移除不会删除分支，也不允许移除含忽略文件或其他本地改动的目录；存在 `assume-unchanged`／`skip-worktree` 索引标志时，即使表面干净也拒绝移除，需先检查文件并处理标志。目录已被手动删除的工作树标为「目录缺失」，不在应用里移除，可在终端运行 `git worktree prune` 清理记录。子模块更新到父仓库暂存区记录的提交，默认不递归；已初始化子模块更新前保留 `refs/gitviz/submodule-before/…`，恢复需在子模块内处理。Diff 遇到 Git LFS 指针文件时只显示指针信息，不读取大对象。
+工作树和子模块只在手动操作时写入。工作树移除不会删除分支，也不允许移除含忽略文件或其他本地改动的目录；存在 `assume-unchanged`／`skip-worktree` 索引标志时，即使表面干净也拒绝移除，需先检查文件并处理标志。目录已被手动删除的工作树标为「目录缺失」，不在应用里移除，可在终端运行 `git worktree prune` 清理记录。子模块更新到父仓库暂存区记录的提交，默认不递归；已初始化子模块更新前保留 `refs/preflight/submodule-before/…`，恢复需在子模块内处理。Diff 遇到 Git LFS 指针文件时只显示指针信息，不读取大对象。
 
 AI 需要手动开启，填写模型、完整 API 端点和令牌，选择 Responses API 或 Chat Completions 兼容协议。连接仅保存在应用会话中，更换端点会清除令牌。准备快照不会发送请求；检查／编辑输入并勾选发送确认后，点击生成才会发送到所选服务，可能产生服务费用。提交草稿仅使用暂存内容。单次最多 200 个差异路径、每个文本 blob 64 KiB、输入 120,000 字符，省略部分会明确标注。已有草稿需确认替换，结果不会自动执行 Git 操作。
 

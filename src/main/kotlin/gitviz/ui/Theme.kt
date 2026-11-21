@@ -25,7 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.SystemFont
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.prefs.Preferences
+import gitviz.platform.AppPreferences
 
 private class Scheme(
     val ground: Color,
@@ -80,7 +80,7 @@ private val Dark = Scheme(
  * 颜色跟着 isDark 这个状态走，切换主题时读过它的地方都会刷新。
  */
 object Palette {
-    private val prefs = Preferences.userRoot().node("gitviz")
+    private val prefs = AppPreferences.node
 
     var isDark by mutableStateOf(prefs.getBoolean("dark", false))
         private set

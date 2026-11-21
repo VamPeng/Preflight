@@ -62,7 +62,7 @@ internal class ChangeFilter(gitDirs: List<String>) {
     }
 
     private companion object {
-        val IgnoredInGitDir = setOf("objects", "logs", "lfs", "hooks", "modules", "worktrees", "gitviz-operation.lock", "gitviz-switch-origin")
+        val IgnoredInGitDir = setOf("objects", "logs", "lfs", "hooks", "modules", "worktrees", "preflight-operation.lock", "preflight-switch-origin", "gitviz-operation.lock", "gitviz-switch-origin")
     }
 }
 
@@ -89,7 +89,7 @@ private class FsEventsWatcher(roots: List<File>, private val filter: ChangeFilte
     private val array = cf.getFunction("CFArrayCreate").invokePointer(
         arrayOf(null, strings.toTypedArray(), strings.size.toLong(), cf.getGlobalVariableAddress("kCFTypeArrayCallBacks")),
     )
-    private val queue = process.getFunction("dispatch_queue_create").invokePointer(arrayOf("gitviz.worktree-watcher", null))
+    private val queue = process.getFunction("dispatch_queue_create").invokePointer(arrayOf("preflight.worktree-watcher", null))
     private val stream = cs.getFunction("FSEventStreamCreate").invokePointer(
         arrayOf(null, callback, null, array, SINCE_NOW, LATENCY_SECONDS, FLAG_WATCH_ROOT),
     ) ?: run { release(); throw IOException("FSEventStreamCreate failed") }
@@ -147,7 +147,7 @@ internal class JdkWatcher(
     private var fileTree = true
     private var registered = 0
 
-    private val thread = Thread(::run, "gitviz-worktree-watcher").apply { isDaemon = true }
+    private val thread = Thread(::run, "preflight-worktree-watcher").apply { isDaemon = true }
 
     init {
         try {

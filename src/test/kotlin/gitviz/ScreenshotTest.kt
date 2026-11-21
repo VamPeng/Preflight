@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 class ScreenshotTest {
 
     private fun render(name: String) {
-        val repo = GitRepo.open(File(System.getenv("GITVIZ_SCREENSHOT_REPO") ?: "."))
+        val repo = GitRepo.open(File(System.getenv("PREFLIGHT_SCREENSHOT_REPO") ?: "."))
         val result = repo.loadCommits()
         val state = RepoState(repo, result, GraphLayout.compute(result.commits, BranchColors(result.refs)), repo.repository.resolve("HEAD")?.name)
         val stashes = repo.workTree?.let { GitCli(it).stashList() }.orEmpty()
@@ -76,7 +76,7 @@ class ScreenshotTest {
     /** 工作区干净时没什么可看，所以只在指定了仓库时才渲染。 */
     @Test
     fun `changes view renders when a repository is given`() {
-        val dir = System.getenv("GITVIZ_SCREENSHOT_REPO") ?: return
+        val dir = System.getenv("PREFLIGHT_SCREENSHOT_REPO") ?: return
         val cli = GitCli(File(dir))
         val files = cli.status()
         val scene = ImageComposeScene(1112 * 2, 700 * 2, Density(2f)) {
@@ -100,7 +100,7 @@ class ScreenshotTest {
     /** 只在指定了有储藏的仓库时才渲染。 */
     @Test
     fun `stash view renders when a repository is given`() {
-        val dir = System.getenv("GITVIZ_SCREENSHOT_REPO") ?: return
+        val dir = System.getenv("PREFLIGHT_SCREENSHOT_REPO") ?: return
         val cli = GitCli(File(dir))
         val stashes = cli.stashList()
         val scene = ImageComposeScene(1112 * 2, 700 * 2, Density(2f)) {
@@ -122,7 +122,7 @@ class ScreenshotTest {
     /** 文件页：默认用当前仓库，build/ 和 .gradle/ 是被忽略的，正好能看到灰色的那些。 */
     @Test
     fun `files view renders`() {
-        val dir = File(System.getenv("GITVIZ_SCREENSHOT_REPO") ?: ".").absoluteFile
+        val dir = File(System.getenv("PREFLIGHT_SCREENSHOT_REPO") ?: ".").absoluteFile
         for ((name, start, filter) in listOf(Triple("files", "", ""), Triple("files-sub", "src/main/kotlin/gitviz", ""), Triple("files-filter", "", "view"))) {
             val scene = ImageComposeScene(1112 * 2, 700 * 2, Density(2f)) {
                 GitVizTheme {

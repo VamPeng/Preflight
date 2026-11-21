@@ -30,17 +30,17 @@ tasks.test {
 }
 
 val devDistribution = providers.gradleProperty("dev").orNull == "true"
-val distributionIcon = if (devDistribution) "GitVizDev" else "GitViz"
+val distributionIcon = if (devDistribution) "PreflightDev" else "Preflight"
 
 compose.desktop {
     application {
         mainClass = "gitviz.MainKt"
         jvmArgs += listOf("-Xmx1g", "-XX:+UseSerialGC", "--add-opens=java.desktop/java.awt=ALL-UNNAMED")
-        if (devDistribution) jvmArgs += "-Dgitviz.dev=true"
+        if (devDistribution) jvmArgs += "-Dpreflight.dev=true"
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             modules("java.instrument", "java.management", "java.net.http", "java.security.jgss", "java.sql", "jdk.unsupported")
-            packageName = if (devDistribution) "GitViz Dev" else "GitViz"
+            packageName = if (devDistribution) "Preflight Dev" else "Preflight"
             packageVersion = "1.0.0" // DMG 要求主版本号大于 0
             // 构建产物不参与 Spotlight 搜索，只展示 /Applications 中安装的两个版本。
             outputBaseDir.set(layout.buildDirectory.dir(
@@ -48,8 +48,8 @@ compose.desktop {
             ))
             // 图标由 scripts/icons.py 从 design/icon 的 SVG 导出
             macOS {
-                packageName = if (devDistribution) "GitViz Dev" else "GitViz"
-                bundleID = if (devDistribution) "gitviz.dev" else "gitviz"
+                packageName = if (devDistribution) "Preflight Dev" else "Preflight"
+                bundleID = if (devDistribution) "preflight.dev" else "preflight"
                 dockName = packageName
                 iconFile.set(project.file("packaging/icons/$distributionIcon.icns"))
             }
@@ -62,9 +62,9 @@ compose.desktop {
 // 只影响开发启动，打包应用继续使用 nativeDistributions 的正式图标和名称。
 tasks.withType<JavaExec>().matching { it.name == "run" || it.name == "runRelease" }.configureEach {
     if (System.getProperty("os.name").startsWith("Mac")) {
-        val devIcon = project.file("packaging/icons/GitVizDev.icns").absolutePath
+        val devIcon = project.file("packaging/icons/PreflightDev.icns").absolutePath
         jvmArgumentProviders.add(org.gradle.process.CommandLineArgumentProvider {
-            listOf("-Xdock:name=GitViz Dev", "-Xdock:icon=$devIcon")
+            listOf("-Xdock:name=Preflight Dev", "-Xdock:icon=$devIcon")
         })
     }
 }
