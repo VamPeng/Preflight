@@ -119,6 +119,8 @@ You can also build an installer (a `.dmg` on macOS). The output goes to `build/c
 ./gradlew packageDistributionForCurrentOS
 ```
 
+The product website (`https://gitviz.vambda.com`) lives in `site/introduction/`. `scripts/package-site.sh` builds the release DMG and packs it with the page into `build/site/` (local only). `site/deploy/upload.sh` publishes that bundle to the server and is a remote change.
+
 ## Getting started
 
 1. Click **Open repository** to choose a local Git repository, or clone a new one
