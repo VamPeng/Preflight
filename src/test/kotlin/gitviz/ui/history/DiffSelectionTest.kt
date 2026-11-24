@@ -3,8 +3,13 @@ package gitviz.ui.history
 import gitviz.logic.*
 import gitviz.ui.*
 import gitviz.ui.changes.DiffSelection
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -117,6 +122,45 @@ class DiffSelectionTest {
                     assertTrue(left.isNotEmpty() && left.all { it == 'x' }, "Must return to the left line: $left")
                 }
             }
+        }
+    }
+
+    @Test fun `unified lines beyond the constraints limit remain scrollable at different densities`() {
+        for (density in listOf(1f, 2f)) {
+            for (length in listOf(20_000, 40_000)) {
+                val wideLines = listOf(
+                    DiffLine("@@ -0,0 +1,2 @@", DiffLineKind.HUNK),
+                    DiffLine("+" + "x".repeat(length) + "X_END", DiffLineKind.ADDED, null, 1),
+                    DiffLine("+" + "中\t".repeat(length / 2) + "CJK_END", DiffLineKind.ADDED, null, 2),
+                )
+                SelectionScene(800, 300, Density(density)) { UnifiedDiff(wideLines, Modifier.fillMaxSize()) }.use { s ->
+                    s.settle()
+                    s.drag(Offset(10f, 297f), Offset(775f, 297f))
+                    val cjk = s.copyDrag(Offset(2f, rowY(2) * density), Offset(770f, rowY(2) * density)).orEmpty()
+                    assertTrue(cjk.endsWith("CJK_END"), "$length chars at density $density: $cjk")
+                    s.scene.sendPointerEvent(PointerEventType.Scroll, Offset(200f, rowY(1) * density), scrollDelta = Offset(-1_000_000f, 0f))
+                    s.settle(60)
+                    val start = s.copyDrag(Offset(95f * density, rowY(1) * density), Offset(700f, rowY(1) * density)).orEmpty()
+                    assertTrue(start.isNotEmpty() && start.all { it == 'x' }, "Must return to the line start: $start")
+                }
+            }
+        }
+    }
+
+    @Test fun `code list rows with plain code text handle lines beyond the constraints limit`() {
+        val text = "y".repeat(40_000) + "BLAME_END"
+        SelectionScene(800, 300, Density(2f)) {
+            SelectionContainer(Modifier.fillMaxSize()) {
+                CodeList(rememberCodeWidth(listOf(text)), 0.dp, Modifier.fillMaxSize()) { row ->
+                    item { Row(Modifier.fillMaxWidth().height(18.dp).then(row)) { CodeText(text, Palette.Ink) } }
+                }
+            }
+        }.use { s ->
+            s.settle()
+            s.scene.sendPointerEvent(PointerEventType.Scroll, Offset(200f, rowY(0) * 2), scrollDelta = Offset(1_000_000f, 0f))
+            s.settle(60)
+            val copied = s.copyDrag(Offset(2f, rowY(0) * 2), Offset(770f, rowY(0) * 2)).orEmpty()
+            assertTrue(copied.endsWith("BLAME_END"), "Plain code rows must reach the line end: $copied")
         }
     }
 

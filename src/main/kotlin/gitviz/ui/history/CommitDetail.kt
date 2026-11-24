@@ -325,17 +325,22 @@ internal fun Message(text: String, modifier: Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) { Text(text, fontSize = TypeScale.Body, color = Palette.Muted) }
 }
 
-/** 代码列表：字符多的时候可以横向滚动，所有行一起动。 */
+/**
+ * 代码列表：字符多的时候可以横向滚动，所有行一起动。
+ * 列表只占视口宽度，每行把 [content] 收到的 row 修饰符接在背景之后，共享同一个横向位置；
+ * 内容宽度不写进 Constraints，超长行也不会超出布局约束。
+ */
 @Composable
-internal fun CodeList(codeWidth: Dp, gutter: Dp, modifier: Modifier, listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(), content: LazyListScope.() -> Unit) {
+internal fun CodeList(codeWidth: Dp, gutter: Dp, modifier: Modifier, listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(), content: LazyListScope.(row: Modifier) -> Unit) {
     val scroll = rememberScrollState()
     BoxWithConstraints(modifier) {
         val viewport = (maxWidth - ScrollbarGutter).coerceAtLeast(0.dp)
         val width = max(viewport, gutter + codeWidth + CodeEndPadding)
         val bottom = if (width > viewport) ScrollbarGutter else 0.dp
-        Box(Modifier.fillMaxSize().padding(end = ScrollbarGutter, bottom = bottom).horizontalScroll(scroll)) {
-            LazyColumn(Modifier.width(width).fillMaxHeight(), state = listState, contentPadding = PaddingValues(vertical = 4.dp), content = content)
-        }
+        val row = Modifier.horizontalScroll(scroll).codeCellWidth(width)
+        LazyColumn(Modifier.fillMaxSize().padding(end = ScrollbarGutter, bottom = bottom)
+            .scrollable(scroll, Orientation.Horizontal, reverseDirection = true),
+            state = listState, contentPadding = PaddingValues(vertical = 4.dp)) { content(row) }
         VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(bottom = bottom))
         if (width > viewport) HorizontalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end = ScrollbarGutter))
     }
@@ -343,14 +348,14 @@ internal fun CodeList(codeWidth: Dp, gutter: Dp, modifier: Modifier, listState: 
 
 /** 按实际字体量宽，避免字号变化、中文或 Tab 让长行末尾仍被裁掉。 */
 @Composable
-internal fun rememberCodeWidth(lines: List<String>, chunked: Boolean = false): Dp {
+internal fun rememberCodeWidth(lines: List<String>): Dp {
     val measurer = rememberTextMeasurer(cacheSize = 0)
     val density = LocalDensity.current
     val style = TextStyle(fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp)
-    return remember(lines, measurer, density, style, chunked) {
+    return remember(lines, measurer, density, style) {
         val pixels = lines.maxOfOrNull {
             val text = it.removeSuffix("\r")
-            if (!chunked || text.length <= CodeChunkSize) {
+            if (text.length <= CodeChunkSize) {
                 measurer.measure(text, style, softWrap = false, maxLines = 1).size.width
             } else codeChunks(text).sumOf { range ->
                 measurer.measure(text.substring(range), style, softWrap = false, maxLines = 1).size.width
@@ -372,8 +377,29 @@ internal fun LineNumber(no: Int?) = DisableSelection {
 
 @Composable
 internal fun CodeText(text: String, color: Color, modifier: Modifier = Modifier) {
-    Text(text.ifEmpty { " " }, fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp, color = color,
-        softWrap = false, maxLines = 1, modifier = modifier)
+    val shown = text.ifEmpty { " " }
+    CodeLine(shown, remember(shown) { AnnotatedString(shown) }, color, modifier)
+}
+
+/**
+ * 单行代码。超过 [CodeChunkSize] 个字符时分段排版，单个 Text 不会宽到超出布局约束；
+ * [annotated] 以 [text] 开头，多出的部分（例如复制用的换行）归到最后一段。
+ */
+@Composable
+private fun CodeLine(text: String, annotated: AnnotatedString, color: Color, modifier: Modifier) {
+    if (text.length <= CodeChunkSize) {
+        Text(annotated, fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp,
+            color = color, softWrap = false, maxLines = 1, modifier = modifier)
+        return
+    }
+    val chunks = remember(text) { codeChunks(text) }
+    Row(modifier) {
+        chunks.forEachIndexed { index, range ->
+            val end = if (index == chunks.lastIndex) annotated.length else range.last + 1
+            Text(annotated.subSequence(range.first, end), fontFamily = CodeFont, fontSize = TypeScale.Small,
+                lineHeight = 18.sp, color = color, softWrap = false, maxLines = 1)
+        }
+    }
 }
 
 private fun DiffLine.colors(): Pair<Color, Color> = when (kind) {
@@ -428,11 +454,12 @@ internal fun DiffBody(lines: List<DiffLine>, mode: DiffMode, modifier: Modifier,
 @Composable
 internal fun UnifiedDiff(lines: List<DiffLine>, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
     val codeWidth = rememberCodeWidth(remember(lines) { lines.map { it.code } })
-    SelectionContainer(modifier) { CodeList(codeWidth, NumberColumn * 2 + 14.dp, Modifier.fillMaxSize()) {
+    SelectionContainer(modifier) { CodeList(codeWidth, NumberColumn * 2 + 14.dp, Modifier.fillMaxSize()) { row ->
         items(lines) { line ->
             val (fg, bg) = line.colors()
             Row(Modifier.fillMaxWidth().height(LineHeight).background(if (selection?.selected?.invoke(line) == true) Palette.Accent.copy(alpha = 0.25f) else bg)
-                .clickable(enabled = selection != null && line.kind in setOf(DiffLineKind.HUNK, DiffLineKind.ADDED, DiffLineKind.REMOVED)) { selection?.toggle?.invoke(line) }) {
+                .clickable(enabled = selection != null && line.kind in setOf(DiffLineKind.HUNK, DiffLineKind.ADDED, DiffLineKind.REMOVED)) { selection?.toggle?.invoke(line) }
+                .then(row)) {
                 LineNumber(line.oldNo)
                 LineNumber(line.newNo)
                 val sign = when (line.kind) { DiffLineKind.ADDED -> "+"; DiffLineKind.REMOVED -> "−"; else -> "" }
@@ -446,7 +473,7 @@ internal fun UnifiedDiff(lines: List<DiffLine>, modifier: Modifier, selection: D
 @Composable
 internal fun SplitDiff(lines: List<DiffLine>, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
     val rows = remember(lines) { toSplitRows(lines) }
-    val codeWidth = rememberCodeWidth(remember(lines) { lines.filter { it.kind != DiffLineKind.HEADER }.map { it.code } }, chunked = true)
+    val codeWidth = rememberCodeWidth(remember(lines) { lines.filter { it.kind != DiffLineKind.HEADER }.map { it.code } })
     val listState = rememberLazyListState()
     val scroll = rememberScrollState()
     // 拖选期间只有按下的那一侧可选，复制出来不会左右交错；松开后两侧都恢复可选，下次从哪边按都行
@@ -501,8 +528,8 @@ private fun SplitCell(line: DiffLine?, left: Boolean, width: Dp, modifier: Modif
         .clickable(enabled = selection != null && line.kind in setOf(DiffLineKind.HUNK, DiffLineKind.ADDED, DiffLineKind.REMOVED)) { selection?.toggle?.invoke(line) }
         .codeCellWidth(width)) {
         LineNumber(if (left) line.oldNo else line.newNo)
-        if (selectable) DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds(), chunked = true)
-        else DisableSelection { DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds(), chunked = true) }
+        if (selectable) DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds())
+        else DisableSelection { DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds()) }
     }
 }
 
@@ -551,7 +578,7 @@ private fun HistoryContent(
 
 
 @Composable
-private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifier: Modifier = Modifier, chunked: Boolean = false) {
+private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifier: Modifier = Modifier) {
     val text = code.removeSuffix("\r")
     val annotated = androidx.compose.ui.text.buildAnnotatedString {
         // 多行选中复制时，SelectionContainer 把各行直接拼起来，所以每行自带换行；只显示一行，换行看不见
@@ -567,20 +594,7 @@ private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifi
             addStyle(androidx.compose.ui.text.SpanStyle(color = tokenColor), token.start, token.end)
         }
     }
-    val ink = if (syntax?.text == text) Palette.Ink else color
-    if (chunked && text.length > CodeChunkSize) {
-        val chunks = remember(text) { codeChunks(text) }
-        Row(modifier) {
-            chunks.forEachIndexed { index, range ->
-                val end = if (index == chunks.lastIndex) annotated.length else range.last + 1
-                Text(annotated.subSequence(range.first, end), fontFamily = CodeFont, fontSize = TypeScale.Small,
-                    lineHeight = 18.sp, color = ink, softWrap = false, maxLines = 1)
-            }
-        }
-    } else {
-        Text(annotated, fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp,
-            color = ink, softWrap = false, maxLines = 1, modifier = modifier)
-    }
+    CodeLine(text, annotated, if (syntax?.text == text) Palette.Ink else color, modifier)
 }
 
 private const val CodeChunkSize = 1024

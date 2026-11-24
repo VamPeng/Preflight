@@ -76,11 +76,11 @@ import kotlinx.coroutines.*
                     val saved = positions[current]
                     listState.scrollToItem((saved?.first ?: (current.firstLine - 1).coerceAtLeast(0)).coerceAtMost(lines.lastIndex), saved?.second ?: 0)
                 }
-                CodeList(rememberCodeWidth(remember(lines) { lines.map { it.text } }), 270.dp, body, listState) {
+                CodeList(rememberCodeWidth(remember(lines) { lines.map { it.text } }), 270.dp, body, listState) { row ->
                 itemsIndexed(lines) { i, line ->
                     val first = i == 0 || lines[i - 1].commitId != line.commitId
                     val inRange = current.firstLine > 0 && line.lineNo in current.firstLine..current.lastLine
-                    Row(Modifier.fillMaxWidth().height(22.dp).background(if (picked == line || inRange) Palette.Raised else Palette.Panel).clickable(enabled = !busy) { picked = line }) {
+                    Row(Modifier.fillMaxWidth().height(22.dp).background(if (picked == line || inRange) Palette.Raised else Palette.Panel).clickable(enabled = !busy) { picked = line }.then(row)) {
                         Text(if (first) "${line.commitId.take(7)} ${line.author}" else "", fontFamily = CodeFont, fontSize = TypeScale.Small, color = Palette.Link, modifier = Modifier.width(220.dp).padding(start = 12.dp))
                         LineNumber(line.lineNo)
                         CodeText(line.text, Palette.Ink)
