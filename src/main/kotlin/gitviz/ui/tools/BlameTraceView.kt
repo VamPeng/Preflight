@@ -76,7 +76,7 @@ import kotlinx.coroutines.*
                     val saved = positions[current]
                     listState.scrollToItem((saved?.first ?: (current.firstLine - 1).coerceAtLeast(0)).coerceAtMost(lines.lastIndex), saved?.second ?: 0)
                 }
-                CodeList(lines.maxOf { it.text.length }, 270.dp, body, listState) {
+                CodeList(rememberCodeWidth(remember(lines) { lines.map { it.text } }), 270.dp, body, listState) {
                 itemsIndexed(lines) { i, line ->
                     val first = i == 0 || lines[i - 1].commitId != line.commitId
                     val inRange = current.firstLine > 0 && line.lineNo in current.firstLine..current.lastLine

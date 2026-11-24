@@ -28,7 +28,7 @@ import java.awt.datatransfer.Transferable
  * 离屏测试文字选择：在场景里用鼠标拖选，再按 ⌘C／Ctrl+C，拿到复制进剪贴板的文字。
  * SelectionContainer 用的是 LocalClipboard，这里换成一个只记录内容的假剪贴板。
  */
-internal class SelectionScene(width: Int, height: Int, content: @Composable () -> Unit) : AutoCloseable {
+internal class SelectionScene(width: Int, height: Int, density: Density = Density(1f), content: @Composable () -> Unit) : AutoCloseable {
     var copied: String? = null
         private set
     private val clipboard = object : Clipboard {
@@ -38,7 +38,7 @@ internal class SelectionScene(width: Int, height: Int, content: @Composable () -
         }
         override val nativeClipboard: NativeClipboard get() = error("not used in tests")
     }
-    val scene = ImageComposeScene(width, height, Density(1f)) {
+    val scene = ImageComposeScene(width, height, density) {
         CompositionLocalProvider(LocalClipboard provides clipboard) {
             GitVizTheme { Surface(Modifier.fillMaxSize(), color = Palette.Ground, contentColor = Palette.Ink) { content() } }
         }

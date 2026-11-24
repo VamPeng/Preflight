@@ -6,10 +6,13 @@ import gitviz.service.*
 import gitviz.ui.*
 import gitviz.ui.changes.*
 import gitviz.ui.tools.*
+import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,8 +39,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -47,12 +54,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.diff.DiffEntry
+import java.text.BreakIterator
+import java.util.Locale
 
 private enum class FileTab { Diff, History, Blame }
 internal enum class DiffMode { Unified, Split }
 
 private val LineHeight = 18.dp
-private val CharWidth = 7.4.dp // Menlo 12sp 一个字符的大致宽度，用来算横向滚动的范围
+private val ScrollbarGutter = 10.dp
+private val CodeEndPadding = 24.dp
 private val NumberColumn = 40.dp
 private val BlameColumn = 176.dp
 
@@ -317,13 +327,36 @@ internal fun Message(text: String, modifier: Modifier) {
 
 /** 代码列表：字符多的时候可以横向滚动，所有行一起动。 */
 @Composable
-internal fun CodeList(longestLine: Int, gutter: Dp, modifier: Modifier, listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(), content: LazyListScope.() -> Unit) {
+internal fun CodeList(codeWidth: Dp, gutter: Dp, modifier: Modifier, listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(), content: LazyListScope.() -> Unit) {
+    val scroll = rememberScrollState()
     BoxWithConstraints(modifier) {
-        val width = max(maxWidth, gutter + CharWidth * longestLine + 24.dp)
-        Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
+        val viewport = (maxWidth - ScrollbarGutter).coerceAtLeast(0.dp)
+        val width = max(viewport, gutter + codeWidth + CodeEndPadding)
+        val bottom = if (width > viewport) ScrollbarGutter else 0.dp
+        Box(Modifier.fillMaxSize().padding(end = ScrollbarGutter, bottom = bottom).horizontalScroll(scroll)) {
             LazyColumn(Modifier.width(width).fillMaxHeight(), state = listState, contentPadding = PaddingValues(vertical = 4.dp), content = content)
         }
-        VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+        VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(bottom = bottom))
+        if (width > viewport) HorizontalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end = ScrollbarGutter))
+    }
+}
+
+/** 按实际字体量宽，避免字号变化、中文或 Tab 让长行末尾仍被裁掉。 */
+@Composable
+internal fun rememberCodeWidth(lines: List<String>, chunked: Boolean = false): Dp {
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    val density = LocalDensity.current
+    val style = TextStyle(fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp)
+    return remember(lines, measurer, density, style, chunked) {
+        val pixels = lines.maxOfOrNull {
+            val text = it.removeSuffix("\r")
+            if (!chunked || text.length <= CodeChunkSize) {
+                measurer.measure(text, style, softWrap = false, maxLines = 1).size.width
+            } else codeChunks(text).sumOf { range ->
+                measurer.measure(text.substring(range), style, softWrap = false, maxLines = 1).size.width
+            }
+        } ?: 0
+        with(density) { pixels.toDp() }
     }
 }
 
@@ -394,8 +427,8 @@ internal fun DiffBody(lines: List<DiffLine>, mode: DiffMode, modifier: Modifier,
  */
 @Composable
 internal fun UnifiedDiff(lines: List<DiffLine>, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
-    val longest = remember(lines) { lines.maxOf { it.text.length } }
-    SelectionContainer(modifier) { CodeList(longest, NumberColumn * 2 + 14.dp, Modifier.fillMaxSize()) {
+    val codeWidth = rememberCodeWidth(remember(lines) { lines.map { it.code } })
+    SelectionContainer(modifier) { CodeList(codeWidth, NumberColumn * 2 + 14.dp, Modifier.fillMaxSize()) {
         items(lines) { line ->
             val (fg, bg) = line.colors()
             Row(Modifier.fillMaxWidth().height(LineHeight).background(if (selection?.selected?.invoke(line) == true) Palette.Accent.copy(alpha = 0.25f) else bg)
@@ -413,16 +446,24 @@ internal fun UnifiedDiff(lines: List<DiffLine>, modifier: Modifier, selection: D
 @Composable
 internal fun SplitDiff(lines: List<DiffLine>, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null) {
     val rows = remember(lines) { toSplitRows(lines) }
+    val codeWidth = rememberCodeWidth(remember(lines) { lines.filter { it.kind != DiffLineKind.HEADER }.map { it.code } }, chunked = true)
     val listState = rememberLazyListState()
+    val scroll = rememberScrollState()
     // 拖选期间只有按下的那一侧可选，复制出来不会左右交错；松开后两侧都恢复可选，下次从哪边按都行
     var side by remember { mutableStateOf<Boolean?>(null) }
-    SelectionContainer(modifier) { Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 4.dp)) {
+    // 列表始终只占视口宽度；每行共享横向位置，避免把两栏总宽度写进 Constraints。
+    SelectionContainer(modifier) { BoxWithConstraints(Modifier.fillMaxSize()) {
+        val viewport = (maxWidth - ScrollbarGutter).coerceAtLeast(0.dp)
+        val cellWidth = max((viewport - 1.dp) / 2, NumberColumn + codeWidth + CodeEndPadding)
+        val bottom = if (cellWidth * 2 + 1.dp > viewport) ScrollbarGutter else 0.dp
+        LazyColumn(Modifier.fillMaxSize().padding(end = ScrollbarGutter, bottom = bottom)
+            .scrollable(scroll, Orientation.Horizontal, reverseDirection = true),
+            state = listState, contentPadding = PaddingValues(vertical = 4.dp)) {
             items(rows) { row ->
-                Row(Modifier.fillMaxWidth().height(LineHeight)) {
+                Row(Modifier.fillMaxWidth().height(LineHeight).horizontalScroll(scroll)) {
                     for (left in listOf(true, false)) {
                         if (!left) VerticalDivider()
-                        SplitCell(if (left) row.left else row.right, left, Modifier.weight(1f).fillMaxHeight()
+                        SplitCell(if (left) row.left else row.right, left, cellWidth, Modifier.fillMaxHeight()
                             .pointerInput(left) {
                                 awaitPointerEventScope {
                                     while (true) {
@@ -438,22 +479,30 @@ internal fun SplitDiff(lines: List<DiffLine>, modifier: Modifier, selection: Dif
                 }
             }
         }
-        VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+        VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(bottom = bottom))
+        if (bottom > 0.dp) HorizontalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end = ScrollbarGutter))
     } }
 }
 
+/** 只报告逻辑宽度，不用 Modifier.width 把超长行宽度编码进 Constraints。 */
+private fun Modifier.codeCellWidth(width: Dp) = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    layout(maxOf(width.roundToPx(), placeable.width), placeable.height) { placeable.placeRelative(0, 0) }
+}
+
 @Composable
-private fun SplitCell(line: DiffLine?, left: Boolean, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null, selectable: Boolean = true) {
+private fun SplitCell(line: DiffLine?, left: Boolean, width: Dp, modifier: Modifier, selection: DiffSelection? = null, syntax: DiffSyntax? = null, selectable: Boolean = true) {
     if (line == null) {
-        Spacer(modifier)
+        Spacer(modifier.codeCellWidth(width))
         return
     }
     val (fg, bg) = line.colors()
     Row(modifier.background(if (selection?.selected?.invoke(line) == true) Palette.Accent.copy(alpha = 0.25f) else bg)
-        .clickable(enabled = selection != null && line.kind in setOf(DiffLineKind.HUNK, DiffLineKind.ADDED, DiffLineKind.REMOVED)) { selection?.toggle?.invoke(line) }) {
+        .clickable(enabled = selection != null && line.kind in setOf(DiffLineKind.HUNK, DiffLineKind.ADDED, DiffLineKind.REMOVED)) { selection?.toggle?.invoke(line) }
+        .codeCellWidth(width)) {
         LineNumber(if (left) line.oldNo else line.newNo)
-        if (selectable) DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds())
-        else DisableSelection { DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds()) }
+        if (selectable) DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds(), chunked = true)
+        else DisableSelection { DiffCodeText(line.code, fg, syntax?.line(line, left), Modifier.clipToBounds(), chunked = true) }
     }
 }
 
@@ -502,7 +551,7 @@ private fun HistoryContent(
 
 
 @Composable
-private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifier: Modifier = Modifier) {
+private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifier: Modifier = Modifier, chunked: Boolean = false) {
     val text = code.removeSuffix("\r")
     val annotated = androidx.compose.ui.text.buildAnnotatedString {
         // 多行选中复制时，SelectionContainer 把各行直接拼起来，所以每行自带换行；只显示一行，换行看不见
@@ -518,6 +567,35 @@ private fun DiffCodeText(code: String, color: Color, syntax: SyntaxLine?, modifi
             addStyle(androidx.compose.ui.text.SpanStyle(color = tokenColor), token.start, token.end)
         }
     }
-    Text(annotated, fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp,
-        color = if (syntax?.text == text) Palette.Ink else color, softWrap = false, maxLines = 1, modifier = modifier)
+    val ink = if (syntax?.text == text) Palette.Ink else color
+    if (chunked && text.length > CodeChunkSize) {
+        val chunks = remember(text) { codeChunks(text) }
+        Row(modifier) {
+            chunks.forEachIndexed { index, range ->
+                val end = if (index == chunks.lastIndex) annotated.length else range.last + 1
+                Text(annotated.subSequence(range.first, end), fontFamily = CodeFont, fontSize = TypeScale.Small,
+                    lineHeight = 18.sp, color = ink, softWrap = false, maxLines = 1)
+            }
+        }
+    } else {
+        Text(annotated, fontFamily = CodeFont, fontSize = TypeScale.Small, lineHeight = 18.sp,
+            color = ink, softWrap = false, maxLines = 1, modifier = modifier)
+    }
+}
+
+private const val CodeChunkSize = 1024
+
+/** 分段排版仍是一行；仅最后一段带换行，且不拆开代理对或组合字符。 */
+private fun codeChunks(text: String): List<IntRange> {
+    if (text.length <= CodeChunkSize) return listOf(text.indices)
+    val boundaries = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(text) }
+    return buildList {
+        var start = 0
+        while (start < text.length) {
+            val limit = (start + CodeChunkSize).coerceAtMost(text.length)
+            val end = if (boundaries.isBoundary(limit)) limit else boundaries.following(limit)
+            add(start until end)
+            start = end
+        }
+    }
 }
